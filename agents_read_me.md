@@ -1,6 +1,8 @@
 # Character Name Dictionary Builder -- Agent Integration Guide
 
-This document is for LLM agents helping developers integrate the **character name dictionary generation** backend into their own applications. The developer does not care about deploying a website. They want the core functionality: **take a VNDB or AniList username/ID and generate a Yomitan-compatible character name dictionary**.
+This document is for LLM agents helping developers integrate **character name dictionary generation** into their own applications. The developer does not care about deploying a website. They want the core functionality: **take a VNDB or AniList username/ID and generate a Yomitan-compatible character name dictionary**.
+
+**Your job is to read the reference Rust implementation, understand it, and rewrite the logic in the developer's own language and framework.** You are not importing a library or running a sidecar service. You are porting the code so it becomes a native part of their application.
 
 Read this file completely before writing any code.
 
@@ -18,7 +20,7 @@ Read this file completely before writing any code.
 8. [Dictionary Output Format (Yomitan ZIP)](#dictionary-output-format)
 9. [Delivering the Dictionary to the User](#delivering-the-dictionary-to-the-user)
 10. [Auto-Update Support (Yomitan Schema)](#auto-update-support)
-11. [Embedding the Backend Directly](#embedding-the-backend-directly)
+11. [Porting to Your Codebase](#porting-to-your-codebase)
 12. [Critical Implementation Details](#critical-implementation-details)
 13. [External API Details](#external-api-details)
 14. [Common Pitfalls](#common-pitfalls)
@@ -182,19 +184,19 @@ It then fetches all characters from every title and builds a single combined dic
 
 ### Alternative: Direct Media ID
 
-If your app already knows what the user is reading (e.g., you track which VN is running), you can skip the username approach and call the single-media endpoint directly with the VNDB ID (e.g., `v17`) or AniList ID (e.g., `9253`).
+If your app already knows what the user is reading (e.g., you track which VN is running), you can skip the username approach and generate the dictionary directly using the VNDB ID (e.g., `v17`) or AniList ID (e.g., `9253`).
 
 ---
 
-## Backend Architecture
+## Backend Architecture (Reference Implementation)
 
-The backend is a standalone Rust (Axum) HTTP service. It has no database, no authentication, and no external dependencies beyond the VNDB and AniList public APIs.
+The reference implementation is a Rust (Axum) HTTP service located in `yomitan-dict-builder/src/`. It has no database, no authentication, and no external dependencies beyond the VNDB and AniList public APIs. **You will be reading these files and rewriting the logic in the developer's own language** -- see [Porting to Your Codebase](#porting-to-your-codebase) for detailed instructions.
 
 ### Module Breakdown
 
 ```
 yomitan-dict-builder/src/
-├── main.rs              # HTTP server and routes
+├── main.rs              # HTTP server and orchestration (read for flow, don't port the HTTP layer)
 ├── models.rs            # Shared data structures (Character, CharacterData, etc.)
 ├── vndb_client.rs       # VNDB REST API client
 ├── anilist_client.rs    # AniList GraphQL API client
@@ -204,28 +206,13 @@ yomitan-dict-builder/src/
 └── dict_builder.rs      # ZIP assembly: index.json + tag_bank + term_banks + images
 ```
 
-### Running the Backend
-
-**Docker (recommended):**
-```bash
-docker compose up -d
-# Accessible at http://localhost:9721
-```
-
-**Native build:**
-```bash
-cargo build --release
-./target/release/yomitan-dict-builder
-# Accessible at http://localhost:3000
-```
-
-The backend binds to `0.0.0.0:3000` (mapped to `9721` via docker-compose).
+Also read `plan.md` in the project root for exhaustive implementation details, API examples, and test expectations.
 
 ---
 
 ## API Reference
 
-These are the endpoints your application calls. All endpoints return JSON or binary data. No authentication is required.
+These are the HTTP endpoints exposed by the reference Rust implementation. When porting, you do not need to replicate the HTTP layer -- instead, implement equivalent **functions** in the developer's codebase that perform the same operations. This reference describes the inputs, outputs, and behavior your ported code should match.
 
 ### `GET /api/user-lists`
 
@@ -497,6 +484,8 @@ Images in the ZIP are referenced by relative path in the structured content: `{"
 
 ## Delivering the Dictionary to the User
 
+After your ported code generates the dictionary ZIP (as in-memory bytes or a file), you need to get it to the user. There are two approaches:
+
 ### Option A: File Download + Manual Import (Simplest)
 
 The user downloads a ZIP file and manually imports it into Yomitan via the Yomitan settings page (Dictionaries > Import).
@@ -506,83 +495,53 @@ The user downloads a ZIP file and manually imports it into Yomitan via the Yomit
 1. Add VNDB/AniList username fields and spoiler level preference to your settings panel.
 
 2. Add a "Generate Dictionary" button that:
-   - Opens an `EventSource` connection to `/api/generate-stream` with the user's settings
-   - Shows a progress indicator based on `progress` events
-   - On `complete`, triggers a file download from `/api/download?token=TOKEN`
+   - Calls your ported dictionary generation function with the user's settings
+   - Shows a progress indicator while processing (optional -- depends on whether you port the progress tracking from `main.rs`)
+   - Saves the resulting ZIP bytes to a file or triggers a browser download
 
 3. The user imports the downloaded ZIP into Yomitan manually.
 
-**Frontend code example:**
+**Pseudocode:**
 
-```javascript
-async function generateDictionary(vndbUser, anilistUser, spoilerLevel) {
-    const params = new URLSearchParams();
-    if (vndbUser) params.set("vndb_user", vndbUser);
-    if (anilistUser) params.set("anilist_user", anilistUser);
-    params.set("spoiler_level", spoilerLevel.toString());
-
-    return new Promise((resolve, reject) => {
-        const es = new EventSource(`/api/generate-stream?${params}`);
-
-        es.addEventListener("progress", (e) => {
-            const data = JSON.parse(e.data);
-            updateProgressUI(data.current, data.total, data.title);
-        });
-
-        es.addEventListener("complete", (e) => {
-            const data = JSON.parse(e.data);
-            es.close();
-            // Trigger browser download
-            const a = document.createElement("a");
-            a.href = `/api/download?token=${data.token}`;
-            a.download = "gsm_characters.zip";
-            a.click();
-            resolve();
-        });
-
-        es.addEventListener("error", (e) => {
-            es.close();
-            if (e.data) {
-                reject(new Error(JSON.parse(e.data).error));
-            } else {
-                reject(new Error("Connection lost"));
-            }
-        });
-    });
-}
 ```
+function on_generate_button_click():
+    vndb_user = settings.get("vndb_username")
+    anilist_user = settings.get("anilist_username")
+    spoiler_level = settings.get("spoiler_level", 0)
+
+    zip_bytes = generate_dictionary(vndb_user, anilist_user, spoiler_level)
+    save_file(zip_bytes, "gsm_characters.zip")
+```
+
+The `generate_dictionary` function is what you build by porting the logic from the reference source files (see [Porting to Your Codebase](#porting-to-your-codebase)).
 
 ### Option B: Custom Dictionary Integration
 
-If your application has its own dictionary or lookup system, you can consume the ZIP programmatically.
+If your application has its own dictionary or lookup system, you can consume the generated data programmatically instead of producing a ZIP for Yomitan.
 
 **Implementation steps:**
 
-1. Call `/api/yomitan-dict?vndb_user=X&anilist_user=Y&spoiler_level=Z` to get the ZIP bytes.
+1. Port the dictionary generation pipeline (see [Porting to Your Codebase](#porting-to-your-codebase)).
 
-2. Parse the ZIP:
-   - Extract `index.json` for metadata
-   - Extract `term_bank_*.json` for term entries
-   - Extract `tag_bank_1.json` for tag definitions
-   - Extract `img/*` for character portrait images
+2. Instead of (or in addition to) assembling a ZIP, extract the term entries directly. Each term entry is an 8-element array where index 0 is the lookup term (Japanese text), index 1 is the hiragana reading, index 4 is the priority score, and index 5 contains the structured content definition.
 
-3. Import the term entries into your own dictionary data structure. Each term entry is an 8-element array where index 0 is the lookup term (Japanese text), index 1 is the hiragana reading, index 4 is the priority score, and index 5 contains the structured content definition.
+3. Import the term entries into your own dictionary data structure.
 
-4. If you want auto-updating, periodically re-call the endpoint and replace your stored entries.
+4. If you also want to support Yomitan users, still generate the ZIP. The two approaches are not mutually exclusive.
 
-5. **If you support the Yomitan auto-update schema**: The `index.json` already contains the required `downloadUrl`, `indexUrl`, and `isUpdatable` fields. See the Auto-Update section below.
+5. **If you support the Yomitan auto-update schema**: Make sure the `index.json` contains valid `downloadUrl`, `indexUrl`, and `isUpdatable` fields. See the Auto-Update section below.
 
 ---
 
 ## Auto-Update Support
 
-The Yomitan auto-update mechanism is **already fully implemented** in the backend. Here is how it works:
+The Yomitan auto-update mechanism requires specific fields in the dictionary's `index.json`. When porting, make sure your dictionary builder includes these fields. Here is how it works:
 
-1. Every generated ZIP contains an `index.json` with:
+1. Every generated ZIP must contain an `index.json` with:
    ```json
    {
-       "downloadUrl": "http://127.0.0.1:3000/api/yomitan-dict?vndb_user=X&spoiler_level=0",
-       "indexUrl": "http://127.0.0.1:3000/api/yomitan-index?vndb_user=X&spoiler_level=0",
+       "downloadUrl": "http://YOUR_HOST:PORT/path/to/dict?vndb_user=X&spoiler_level=0",
+       "indexUrl": "http://YOUR_HOST:PORT/path/to/index?vndb_user=X&spoiler_level=0",
        "isUpdatable": true,
        "revision": "384729104856"
    }
@@ -592,59 +551,87 @@ The Yomitan auto-update mechanism is **already fully implemented** in the backen
 
 3. If the revision differs from the installed version, Yomitan downloads the full ZIP from `downloadUrl` and replaces the dictionary.
 
-4. Because the `revision` is a random 12-digit string regenerated on every call, any request to the backend produces a "new" revision, triggering an update.
+4. The `revision` should be a random string regenerated on every build, so any new generation triggers an update.
+
+### What You Need to Implement for Auto-Update
+
+If you want Yomitan auto-update to work, your ported code must expose two HTTP endpoints (or equivalent):
+
+1. **A dictionary download endpoint** -- returns the full ZIP. This is what `downloadUrl` points to.
+2. **An index metadata endpoint** -- returns just the `index.json` as JSON. This is what `indexUrl` points to. Yomitan calls this frequently to check if an update is available without downloading the full ZIP.
+
+The reference implementation uses `/api/yomitan-dict` and `/api/yomitan-index` for these. You can use any URL paths that make sense in your application.
 
 ### If You Have a Custom Dictionary System
 
-If you are building your own dictionary solution (not using Yomitan), you should still support this auto-update pattern:
+If you are building your own dictionary solution (not using Yomitan), you should still support this update pattern:
 
 1. Store the `revision` from the last imported dictionary.
-2. Periodically call `/api/yomitan-index` with the same parameters.
-3. Compare the returned `revision` against your stored one.
-4. If different, re-download from `/api/yomitan-dict` and re-import.
+2. Periodically regenerate the dictionary.
+3. Compare the new revision against the stored one.
+4. If different, re-import the new entries.
 
 This ensures the dictionary stays current as the user starts new media.
 
 ### URL Configuration
 
-The auto-update URLs default to `http://127.0.0.1:3000`. If your backend runs on a different host or port, you must update these URLs. The relevant code is in `main.rs` -- search for `http://127.0.0.1:3000` and replace with your deployment URL. Ideally, make this configurable via an environment variable.
+The auto-update URLs must point to wherever your ported backend is accessible. The reference implementation hardcodes `http://127.0.0.1:3000`. When porting, make this configurable -- use an environment variable, a config file, or derive it from the request URL.
 
 ---
 
-## Embedding the Backend Directly
+## Porting to Your Codebase
 
-If your application is written in Rust, you can skip the HTTP layer entirely and call the backend modules as a library:
+**You are not importing or running this Rust backend as a dependency.** You are rewriting the dictionary generation logic in the developer's own language and framework, so it becomes a native part of their application.
 
-```rust
-use vndb_client::VndbClient;
-use anilist_client::AnilistClient;
-use dict_builder::DictBuilder;
+The reference implementation is in Rust (Axum), located at `yomitan-dict-builder/src/`. Read each source file listed below, understand what it does, and rewrite the equivalent functionality in the developer's language.
 
-// Fetch characters for a specific VN
-let client = VndbClient::new();
-let (romaji_title, original_title) = client.fetch_vn_title("v17").await?;
-let mut char_data = client.fetch_characters("v17").await?;
+### Source Files to Read (in order)
 
-// Download images
-for ch in char_data.all_characters_mut() {
-    if let Some(ref url) = ch.image_url {
-        ch.image_base64 = client.fetch_image_as_base64(url).await;
-    }
-}
+Read these files from the `yomitan-dict-builder/src/` directory. Each one is a self-contained module. Together they form the complete pipeline from "VNDB/AniList username" to "Yomitan ZIP file".
 
-// Build dictionary ZIP
-let mut builder = DictBuilder::new(0, Some(download_url), title);
-for ch in char_data.all_characters() {
-    builder.add_character(ch, &title);
-}
-let zip_bytes: Vec<u8> = builder.export_bytes();
-```
+| File | What It Does | Priority |
+|---|---|---|
+| `models.rs` | **Read first.** Defines all shared data structures: `Character`, `CharacterTrait`, `CharacterData`, `UserMediaEntry`. Every other module depends on these types. | Required |
+| `vndb_client.rs` | VNDB REST API client. Resolves usernames to user IDs, fetches user's "Playing" list, fetches characters for a VN (paginated), downloads character portrait images and base64-encodes them. | Required if supporting VNDB |
+| `anilist_client.rs` | AniList GraphQL API client. Fetches user's "Currently Watching/Reading" list, fetches characters for a media title (paginated), downloads character portrait images and base64-encodes them. | Required if supporting AniList |
+| `name_parser.rs` | **Most complex module.** Japanese name parsing: detects kanji, splits names into family/given parts, converts romaji to hiragana, converts katakana to hiragana, generates mixed-script name readings, defines the 15 honorific suffixes. Contains the critical name order swap logic. | Required |
+| `content_builder.rs` | Builds Yomitan structured content JSON (the character popup card). Handles spoiler stripping for both VNDB and AniList formats, birthday/stats formatting, trait categorization with spoiler filtering, and the three-tier spoiler level system. | Required |
+| `image_handler.rs` | Simple module. Decodes base64 data URI strings into raw image bytes + determines file extension from the content type header. | Required |
+| `dict_builder.rs` | ZIP assembly orchestrator. Takes processed characters, generates all term entries (base names, honorific variants, aliases, alias honorifics), deduplicates them, builds `index.json` and `tag_bank_1.json`, chunks entries into `term_bank_N.json` files, and writes everything into a ZIP. | Required |
+| `main.rs` | HTTP server routes. You do NOT need to replicate the Axum server. Instead, read this file to understand the **orchestration flow**: how the modules are called in sequence, how username-based and single-media modes work, how SSE streaming progress works, and how the download token store works. Port the orchestration logic, not the HTTP layer. | Read for understanding |
 
-For non-Rust applications, run the backend as:
+### Also read the implementation plan
 
-- **Docker sidecar**: `docker compose up -d` (exposes port 9721 -> 3000)
-- **Standalone binary**: `cargo build --release && ./target/release/yomitan-dict-builder` (binds to port 3000)
-- **Subprocess**: Start the binary as a child process and communicate via HTTP
+The file `plan.md` in the project root contains the **complete implementation plan** with exhaustive detail on every module, including:
+- Full API request/response examples for VNDB and AniList
+- The complete romaji-to-hiragana lookup table
+- The exact Yomitan structured content JSON format
+- Test expectations for every module
+- Edge cases and critical implementation notes
+
+**Read `plan.md` before porting.** It contains information that is not obvious from the source code alone, especially around the name order swap logic and the romaji conversion rules.
+
+### Porting Guidance
+
+When rewriting in the developer's language:
+
+1. **Start with `models.rs`.** Define the equivalent data structures. Every other module depends on them.
+
+2. **Port the API clients** (`vndb_client.rs` and/or `anilist_client.rs`). These are straightforward HTTP clients. Use whatever HTTP library the developer's stack provides. Respect rate limits (200ms delay for VNDB, 300ms for AniList between paginated requests).
+
+3. **Port `name_parser.rs` carefully.** This is the hardest module to get right. The romaji-to-hiragana conversion, the katakana-to-hiragana conversion, and especially the **name order swap** between VNDB's Western-order romanized names and Japanese-order original names are all critical. Do not simplify or "fix" the name order swap -- it is correct as written. See the "Critical Implementation Details" section below.
+
+4. **Port `content_builder.rs`.** The structured content JSON format is documented in `plan.md` section 8. The output must be valid Yomitan structured content.
+
+5. **Port `dict_builder.rs`.** This needs a ZIP library for the developer's language. The ZIP must contain `index.json`, `tag_bank_1.json`, `term_bank_N.json` (chunked at 10,000 entries), and an `img/` folder with character portraits.
+
+6. **Wire it together.** The orchestration in `main.rs` shows the correct sequence: fetch user lists -> for each title, fetch characters -> download images -> parse names -> build content -> generate entries -> assemble ZIP.
+
+### What NOT to Port
+
+- The Axum HTTP server (`main.rs` routes, SSE streaming, download token store) -- unless the developer needs an HTTP API. They likely want to call the dictionary generation as a function within their own app.
+- The frontend (`static/index.html`) -- the developer has their own UI.
+- Docker/deployment configuration.
 
 ---
 
@@ -657,15 +644,15 @@ VNDB returns romanized names in **Western order** ("Given Family") but Japanese 
 - `romanized_parts[0]` (first word of Western name) -> maps to the **family** name reading
 - `romanized_parts[1]` (second word of Western name) -> maps to the **given** name reading
 
-**Do not modify this logic.** It is correct and tested. The test suite (`cargo test`) covers 80+ cases.
+**Do not modify this logic when porting.** It looks wrong at first glance but is correct and extensively tested. See `name_parser.rs` and `plan.md` section 7.6 for the full explanation.
 
 ### Image Flow
 
-Images must be downloaded **before** calling `add_character()`. The correct sequence:
+Images must be downloaded **before** building term entries. The correct sequence:
 
-1. Fetch all characters from API (images not yet downloaded; `image_base64` is `None`)
-2. Loop over all characters, download each `image_url`, set `image_base64` to the data URI string
-3. Pass characters to `DictBuilder::add_character()` which reads `image_base64`
+1. Fetch all characters from API (images not yet downloaded)
+2. Loop over all characters, download each `image_url`, store as base64 data URI string
+3. Pass characters (with images) to the dictionary builder which embeds them in the ZIP
 
 ### Entry Deduplication
 
@@ -710,39 +697,49 @@ AniList does **not** provide: height, weight, personality traits, role categorie
 
 ## Common Pitfalls
 
-1. **Do not modify the name order swap logic** in `name_parser.rs`. It looks wrong at first glance but is correct. VNDB romanized names are Western order. Japanese names are Japanese order. The swap is tested.
+1. **Do not modify the name order swap logic** when porting from `name_parser.rs`. It looks wrong at first glance but is correct. VNDB romanized names are Western order. Japanese names are Japanese order. The swap is extensively tested.
 
-2. **The `revision` field is intentionally random.** Every generation produces a new revision. This forces Yomitan to recognize updates. Do not make it deterministic.
+2. **The `revision` field must be random.** Every generation should produce a new revision. This forces Yomitan to recognize updates. Do not make it deterministic or based on content hashing.
 
-3. **Download tokens expire after 5 minutes.** The in-memory download store cleans up old entries. If the user is slow, the token will be gone.
+3. **Images are binary files in the ZIP, not base64 in the JSON.** The structured content references images by relative path (`"path": "img/cc123.jpg"`). Yomitan loads them from the ZIP. The base64 encoding is only used as an intermediate representation during processing.
 
-4. **Images are binary files in the ZIP, not base64 in the JSON.** The structured content references images by relative path (`"path": "img/cc123.jpg"`). Yomitan loads them from the ZIP.
+4. **Term banks must be chunked at 10,000 entries.** A dictionary with 25,000 entries produces `term_bank_1.json`, `term_bank_2.json`, and `term_bank_3.json`. Do not put all entries in one file.
 
-5. **Term banks are chunked at 10,000 entries.** A dictionary with 25,000 entries produces `term_bank_1.json`, `term_bank_2.json`, and `term_bank_3.json`.
+5. **Characters without `name_original` (Japanese name) are skipped.** If a character has no Japanese name in the database, they produce zero dictionary entries. Do not generate entries with empty terms.
 
-6. **CORS is wide open** (`Access-Control-Allow-Origin: *`). Intentional for cross-origin browser access. Lock it down in `main.rs` if needed.
+6. **Respect API rate limits.** VNDB allows 200 requests per 5 minutes; AniList allows 90 per minute. Add delays between paginated requests (200ms for VNDB, 300ms for AniList) or your requests will be throttled/blocked.
 
-7. **The server is stateless** except for the temporary download store. No database. Restarting clears pending downloads.
+7. **The ZIP writer needs seek support.** If using Rust's `zip` crate, use `Cursor<Vec<u8>>` not bare `Vec<u8>`. Other languages typically don't have this issue, but verify your ZIP library supports in-memory ZIP creation.
 
-8. **The backend hardcodes `http://127.0.0.1:3000`** for auto-update URLs. Change this in `main.rs` if deploying elsewhere.
+8. **AniList has fewer character fields than VNDB.** Height, weight, and trait categories (personality, roles, engages_in, subject_of) are all empty/None for AniList characters. Your code must handle these being absent gracefully.
 
 ---
 
-## Running Tests
+## Verifying Your Port
+
+The reference implementation has 77+ unit tests. You can run them on the Rust code to understand expected behavior:
 
 ```bash
-# Unit tests (no server required, covers name parsing, content building, ZIP assembly)
+# From the yomitan-dict-builder/ directory
 cargo test
-
-# Integration tests (require the server running on localhost:3000)
-cargo test -- --ignored
 ```
 
-The unit test suite covers 77+ tests:
-- Name parsing (38 tests): kanji detection, name splitting, katakana->hiragana, romaji->kana, mixed name readings
-- Content building (23 tests): spoiler stripping, birthday formatting, stats, traits, structured content at all spoiler levels
-- Dictionary building (12 tests): role scores, entry generation, honorifics, aliases, deduplication, ZIP structure
-- Models (4 tests): serialization, iteration
+More importantly, use the test expectations from `plan.md` section 14 ("Test Expectations & Verification") to write equivalent tests in the developer's language. The critical cases to verify in your port:
+
+**Name parsing:**
+- `contains_kanji("漢a")` -> true; `contains_kanji("kana")` -> false
+- `split_japanese_name("family given")` -> family="family", given="given", combined="familygiven"
+- `generate_mixed_name_readings("漢 kana", "Given Family")` -> family reading uses `alphabet_to_kana("given")`, given reading uses `kata_to_hira("kana")`
+- Romaji: "kana" -> "かな", "shinichi" -> "しんいち", "kappa" -> "かっぱ"
+
+**Content building:**
+- `strip_spoilers("a [spoiler]x[/spoiler] b ~!y!~ c")` -> `"a  b  c"`
+- `format_birthday([9, 1])` -> `"September 1"`
+- Spoiler level 0 card has NO `<details>` sections; level 1+ has them
+
+**Dictionary building:**
+- A two-part name produces entries for: original with space, combined, family only, given only, plus honorific variants for each
+- All entries are deduplicated
 
 ---
 
