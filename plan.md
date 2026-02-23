@@ -1954,10 +1954,10 @@ impl DictBuilder {
         let description = format!("Character names from {}", self.game_title);
 
         let mut index = json!({
-            "title": "GSM Character Dictionary",
+            "title": "Bee's Character Dictionary",
             "revision": &self.revision,
             "format": 3,
-            "author": "GameSentenceMiner",
+            "author": "Bee (https://github.com/bee-san)",
             "description": description
         });
 
@@ -2113,7 +2113,7 @@ async fn generate_dict(Query(params): Query<DictQuery>) -> impl IntoResponse {
                 StatusCode::OK,
                 [
                     ("content-type", "application/zip"),
-                    ("content-disposition", "attachment; filename=gsm_characters.zip"),
+                    ("content-disposition", "attachment; filename=bee_characters.zip"),
                     ("access-control-allow-origin", "*"),
                 ],
                 bytes,
@@ -2143,7 +2143,6 @@ async fn generate_dict(Query(params): Query<DictQuery>) -> impl IntoResponse {
                     StatusCode::OK,
                     [
                         ("content-type", "application/zip"),
-                        ("content-disposition", "attachment; filename=gsm_characters.zip"),
                         ("access-control-allow-origin", "*"),
                     ],
                     bytes,
@@ -2470,10 +2469,10 @@ dictionary.zip
 
 ```json
 {
-    "title": "GSM Character Dictionary",
+    "title": "Bee's Character Dictionary",
     "revision": "384729104856",
     "format": 3,
-    "author": "GameSentenceMiner",
+    "author": "Bee (https://github.com/bee-san)",
     "description": "Character names from Steins;Gate",
     "downloadUrl": "http://127.0.0.1:3000/api/yomitan-dict?source=vndb&id=v17&spoiler_level=0&media_type=ANIME",
     "indexUrl": "http://127.0.0.1:3000/api/yomitan-index?source=vndb&id=v17&spoiler_level=0&media_type=ANIME",

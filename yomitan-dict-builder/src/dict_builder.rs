@@ -227,10 +227,10 @@ impl DictBuilder {
         };
 
         let mut index = json!({
-            "title": "GSM Character Dictionary",
+            "title": "Bee's Character Dictionary",
             "revision": &self.revision,
             "format": 3,
-            "author": "GameSentenceMiner",
+            "author": "Bee (https://github.com/bee-san)",
             "description": description
         });
 
@@ -479,9 +479,9 @@ mod tests {
         );
         let index = builder.create_index_public();
 
-        assert_eq!(index["title"], "GSM Character Dictionary");
+        assert_eq!(index["title"], "Bee's Character Dictionary");
         assert_eq!(index["format"], 3);
-        assert_eq!(index["author"], "GameSentenceMiner");
+        assert_eq!(index["author"], "Bee (https://github.com/bee-san)");
         assert!(index["description"].as_str().unwrap().contains("Test Game"));
         assert!(index["downloadUrl"].as_str().is_some());
         assert!(index["indexUrl"].as_str().unwrap().contains("/api/yomitan-index"));
@@ -493,7 +493,7 @@ mod tests {
         let builder = DictBuilder::new(0, None, "Test".to_string());
         let index = builder.create_index_public();
 
-        assert_eq!(index["title"], "GSM Character Dictionary");
+        assert_eq!(index["title"], "Bee's Character Dictionary");
         assert!(index.get("downloadUrl").is_none() || index["downloadUrl"].is_null());
     }
 
@@ -551,7 +551,7 @@ mod tests {
         index_file.read_to_string(&mut contents).unwrap();
 
         let index: serde_json::Value = serde_json::from_str(&contents).unwrap();
-        assert_eq!(index["title"], "GSM Character Dictionary");
+        assert_eq!(index["title"], "Bee's Character Dictionary");
         assert_eq!(index["format"], 3);
     }
 

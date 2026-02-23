@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Yomitan Dictionary Builder</title>
+    <title>Bee's Character Dictionary Builder</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -230,12 +230,12 @@
 </head>
 <body>
     <div class="container">
-        <h1>( Yomitan Dictionary Builder</h1>
+        <h1>🐝 Bee's Character Dictionary</h1>
         <p class="subtitle">Generate character name dictionaries for Yomitan</p>
 
         <!-- Dictionary Preview Image -->
         <div class="dict-preview">
-            <img src="dict-preview.png" alt="Dictionary preview showing Yomitan character name lookup">
+            <img src="/static/dict-preview.png" alt="Dictionary preview showing Yomitan character name lookup">
         </div>
 
         <div class="tabs">
@@ -324,21 +324,20 @@
     <!-- Info Cards -->
     <div class="info-cards">
         <div class="info-card">
-            <h3>= Auto-Updating Dictionary</h3>
+            <h3>🔄 Auto-Updating Dictionary</h3>
             <p>
-                This dictionary is auto-updating! Every time you regenerate it from your user lists,
-                it pulls the latest character data from VNDB and AniList. As new characters are added
-                to your visual novels, anime, or manga  or existing character data is updated upstream 
-                your dictionary stays fresh. Just re-run the generator periodically to keep it current.
+                This dictionary is auto-updating! Every time your dictionary app makes a request to update
+                the dictionary, we will read your VNDB / AniList and add new characters from media you're
+                interacting with. When you finish a game or VN or manga, we will remove those characters
+                from the dictionary.
             </p>
         </div>
 
         <div class="info-card">
             <h3>Yomitan Auto-Update Support</h3>
             <p>
-                Yomitan doesn't currently support automatically updating dictionaries within the extension itself.
-                You'll need to manually regenerate and re-import the dictionary to get updates.
-                If you'd like Yomitan to support auto-updating, please upvote and comment on the feature request:
+                Yomitan does not support automatic updating, you will need to manually update every time in the app.
+                If you want Yomitan to support auto-updating, please upvote and comment on this feature request:
                 <a href="https://github.com/yomidevs/yomitan/issues/2277" target="_blank" rel="noopener">
                     yomitan#2277  Auto-update dictionaries
                 </a>
@@ -346,17 +345,35 @@
         </div>
 
         <div class="info-card">
-            <h3> Links & Support</h3>
+            <h3>📱 Apps that have integrated Bee's Character Dictionary</h3>
+            <p style="margin-bottom: 12px; font-style: italic;">
+                Integrated into your favourite apps so you don't have to use this website
+            </p>
+            <ul style="list-style: none; padding: 0; margin-bottom: 16px;">
+                <li style="padding: 8px 0; color: #555; font-size: 0.92em;">
+                    <strong>GameSentenceMiner (GSM)</strong> 💎 Found in Database Management in Stats
+                </li>
+            </ul>
+            <p style="font-size: 0.85em; color: #999;">
+                Want to integrate this into your app? Tell your AI Agent to
+                <a href="https://github.com/bee-san/Japanese_Character_Name_Dictionary/blob/0f80bf30df432e4145dee1e53f1b296e6bc93ef8/agents_read_me.md" target="_blank" rel="noopener">
+                    read this
+                </a> and it will add it.
+            </p>
+        </div>
+
+        <div class="info-card">
+            <h3>🔗 Links & Support</h3>
             <p style="margin-bottom: 12px;">
                 This project is open source! Check out the code, report issues, or contribute on GitHub.
-                If you find it useful, consider sponsoring to support development 
+                If you find it useful, consider sponsoring to support development ❤️
             </p>
             <div class="footer-links">
                 <a href="https://github.com/bee-san/Japanese_Character_Name_Dictionary" target="_blank" rel="noopener">
-                    P GitHub Repository
+                    📦 GitHub Repository
                 </a>
                 <a href="https://github.com/sponsors/bee-san" target="_blank" rel="noopener">
-                     Sponsor
+                     ❤️ Sponsor
                 </a>
             </div>
         </div>
@@ -517,7 +534,7 @@
                     const downloadUrl = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = downloadUrl;
-                    a.download = 'gsm_characters.zip';
+                    a.download = 'bee_characters.zip';
                     document.body.appendChild(a);
                     a.click();
                     a.remove();

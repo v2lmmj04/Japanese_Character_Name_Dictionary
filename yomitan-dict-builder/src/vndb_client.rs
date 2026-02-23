@@ -4,6 +4,12 @@ use reqwest::Client;
 
 use crate::models::*;
 
+/// Parsed result from user input: either a direct user ID or a username to resolve.
+enum ParsedUserInput {
+    UserId(String),
+    Username(String),
+}
+
 pub struct VndbClient {
     client: Client,
 }
@@ -15,9 +21,63 @@ impl VndbClient {
         }
     }
 
+    /// Parse a VNDB user input which may be a URL, user ID, or username.
+    /// Supports formats like:
+    ///   - "https://vndb.org/u306587"
+    ///   - "vndb.org/u306587"
+    ///   - "u306587"
+    ///   - "yorhel" (plain username)
+    /// Returns either a resolved user ID or the cleaned username for API lookup.
+    fn parse_user_input(input: &str) -> ParsedUserInput {
+        let input = input.trim();
+
+        // Try to parse as URL or URL-like path containing /uNNNN
+        // Match patterns like https://vndb.org/u306587 or vndb.org/u306587
+        if input.contains("vndb.org/") {
+            if let Some(pos) = input.rfind("vndb.org/") {
+                let after_slash = &input[pos + "vndb.org/".len()..];
+                // Extract the path segment (stop at '/' or '?' or '#' or end)
+                let segment = after_slash
+                    .split(&['/', '?', '#'][..])
+                    .next()
+                    .unwrap_or("")
+                    .trim();
+                if !segment.is_empty() {
+                    // Check if it's a user ID like "u306587"
+                    if segment.starts_with('u')
+                        && segment.len() > 1
+                        && segment[1..].chars().all(|c| c.is_ascii_digit())
+                    {
+                        return ParsedUserInput::UserId(segment.to_string());
+                    }
+                }
+            }
+        }
+
+        // Check if input is directly a user ID like "u306587"
+        if input.starts_with('u')
+            && input.len() > 1
+            && input[1..].chars().all(|c| c.is_ascii_digit())
+        {
+            return ParsedUserInput::UserId(input.to_string());
+        }
+
+        // Otherwise treat as a username to resolve
+        ParsedUserInput::Username(input.to_string())
+    }
+
     /// Resolve a VNDB username to a user ID (e.g. "yorhel" → "u2").
     /// Uses GET /user?q=USERNAME endpoint. Case-insensitive.
     pub async fn resolve_user(&self, username: &str) -> Result<String, String> {
+        // First, parse the input to handle URLs and direct user IDs
+        match Self::parse_user_input(username) {
+            ParsedUserInput::UserId(id) => return Ok(id),
+            ParsedUserInput::Username(name) => return self.resolve_username(&name).await,
+        }
+    }
+
+    /// Internal: resolve a plain username string via the VNDB API.
+    async fn resolve_username(&self, username: &str) -> Result<String, String> {
         let response = self
             .client
             .get("https://api.vndb.org/kana/user")
@@ -386,5 +446,79 @@ mod tests {
     #[test]
     fn test_normalize_id_large_number() {
         assert_eq!(VndbClient::normalize_id("58641"), "v58641");
+    }
+
+    // Helper to assert parse_user_input results
+    fn assert_user_id(input: &str, expected_id: &str) {
+        match VndbClient::parse_user_input(input) {
+            ParsedUserInput::UserId(id) => assert_eq!(id, expected_id, "input: {}", input),
+            ParsedUserInput::Username(name) => {
+                panic!("Expected UserId('{}') but got Username('{}') for input: {}", expected_id, name, input)
+            }
+        }
+    }
+
+    fn assert_username(input: &str, expected_name: &str) {
+        match VndbClient::parse_user_input(input) {
+            ParsedUserInput::Username(name) => assert_eq!(name, expected_name, "input: {}", input),
+            ParsedUserInput::UserId(id) => {
+                panic!("Expected Username('{}') but got UserId('{}') for input: {}", expected_name, id, input)
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_user_input_https_url() {
+        assert_user_id("https://vndb.org/u306587", "u306587");
+    }
+
+    #[test]
+    fn test_parse_user_input_http_url() {
+        assert_user_id("http://vndb.org/u306587", "u306587");
+    }
+
+    #[test]
+    fn test_parse_user_input_bare_domain_url() {
+        assert_user_id("vndb.org/u306587", "u306587");
+    }
+
+    #[test]
+    fn test_parse_user_input_url_with_trailing_slash() {
+        assert_user_id("https://vndb.org/u306587/", "u306587");
+    }
+
+    #[test]
+    fn test_parse_user_input_url_with_query_string() {
+        assert_user_id("https://vndb.org/u306587?tab=list", "u306587");
+    }
+
+    #[test]
+    fn test_parse_user_input_url_with_fragment() {
+        assert_user_id("https://vndb.org/u306587#top", "u306587");
+    }
+
+    #[test]
+    fn test_parse_user_input_direct_user_id() {
+        assert_user_id("u306587", "u306587");
+    }
+
+    #[test]
+    fn test_parse_user_input_direct_user_id_small() {
+        assert_user_id("u2", "u2");
+    }
+
+    #[test]
+    fn test_parse_user_input_plain_username() {
+        assert_username("yorhel", "yorhel");
+    }
+
+    #[test]
+    fn test_parse_user_input_plain_username_with_whitespace() {
+        assert_username("  yorhel  ", "yorhel");
+    }
+
+    #[test]
+    fn test_parse_user_input_url_with_whitespace() {
+        assert_user_id("  https://vndb.org/u306587  ", "u306587");
     }
 }

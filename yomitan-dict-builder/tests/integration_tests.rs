@@ -92,9 +92,9 @@ async fn test_index_endpoint_returns_json() {
     if let Ok(response) = result {
         assert_eq!(response.status(), 200);
         let body: serde_json::Value = response.json().await.unwrap();
-        assert_eq!(body["title"], "GSM Character Dictionary");
+        assert_eq!(body["title"], "Bee's Character Dictionary");
         assert_eq!(body["format"], 3);
-        assert_eq!(body["author"], "GameSentenceMiner");
+        assert_eq!(body["author"], "Bee (https://github.com/bee-san)");
         assert!(body["downloadUrl"].as_str().is_some());
         assert!(body["indexUrl"].as_str().is_some());
         assert_eq!(body["isUpdatable"], true);

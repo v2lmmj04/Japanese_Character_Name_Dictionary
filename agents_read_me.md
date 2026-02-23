@@ -163,7 +163,7 @@ At least one username must be provided. Both can be provided simultaneously -- t
 
 Add these fields to your application's existing settings or preferences panel:
 
-1. **VNDB Username** -- text input. The user's VNDB profile name (e.g., "Yorhel"). Case-insensitive. The backend resolves this to a numeric user ID via the VNDB API.
+1. **VNDB Username** -- text input. Accepts multiple input formats (see [Input Format Handling](#input-format-handling) below). The backend normalizes and resolves whatever the user provides.
 
 2. **AniList Username** -- text input. The user's AniList profile name (e.g., "Josh").
 
@@ -181,6 +181,53 @@ The system uses these usernames to query each platform's API for the user's **cu
 - AniList: Media with status "CURRENT" (both ANIME and MANGA)
 
 It then fetches all characters from every title and builds a single combined dictionary ZIP. The dictionary automatically contains every character from everything the user is currently reading/watching.
+
+### Input Format Handling
+
+Users will enter VNDB identifiers in different formats. Your application must handle all of them gracefully. The reference implementation (`vndb_client.rs`) includes a `parse_user_input` function that normalizes user input before making API calls.
+
+#### Accepted VNDB User Input Formats
+
+| User enters | What it is | How to handle |
+|---|---|---|
+| `Yorhel` | Plain username | Resolve via VNDB API: `GET /user?q=Yorhel` |
+| `u306587` | Direct user ID | Use directly -- no API resolution needed |
+| `https://vndb.org/u306587` | Full HTTPS URL | Extract `u306587` from path, use directly |
+| `http://vndb.org/u306587` | Full HTTP URL | Extract `u306587` from path, use directly |
+| `vndb.org/u306587` | URL without scheme | Extract `u306587` from path, use directly |
+| `https://vndb.org/u306587/` | URL with trailing slash | Extract `u306587`, ignore trailing slash |
+| `https://vndb.org/u306587?tab=list` | URL with query params | Extract `u306587`, ignore query string |
+| `https://vndb.org/u306587#top` | URL with fragment | Extract `u306587`, ignore fragment |
+
+The parsing logic is:
+1. Trim whitespace from input
+2. If input contains `vndb.org/`, extract the path segment after it. If it matches the pattern `u` followed by digits (e.g., `u306587`), treat it as a direct user ID -- skip API resolution entirely
+3. If input starts with `u` followed by only digits, treat it as a direct user ID
+4. Otherwise, treat it as a plain username and resolve via the VNDB user API
+
+This matters because the VNDB user API (`GET /user?q=...`) searches by **username string**, not by user ID. Passing a full URL like `https://vndb.org/u306587` as the username query will return "user not found". The parsing step prevents this.
+
+#### Storage Decision: Username vs URL vs User ID
+
+When persisting the user's VNDB identifier in your settings, you have a choice:
+
+- **Store whatever the user entered** (recommended). Parse and normalize at runtime each time. This is simplest and lets users update their input freely. The reference implementation takes this approach -- the raw user input string flows from the settings field through the API request parameter all the way to `resolve_user()`, which parses it on every call.
+
+- **Store the normalized user ID** (e.g., `u306587`). Parse once on save, store the extracted ID. This avoids re-parsing but means you need to handle the parsing in your settings save logic rather than in the API client.
+
+- **Store the username** (e.g., `Yorhel`). Resolve the user ID once on save, store the resolved username. This requires an API call during settings save and breaks if the user enters a URL of a user whose username you don't know.
+
+The recommended approach is to store the raw input and normalize at the point of use. This is the most flexible and handles all edge cases.
+
+#### Auto-Update URL Implications
+
+When constructing `downloadUrl` and `indexUrl` for the dictionary's `index.json`, the `vndb_user` parameter value is embedded in the URL. If the user entered a full URL like `https://vndb.org/u306587`, that value gets URL-encoded in the auto-update URL:
+
+```
+http://127.0.0.1:3000/api/yomitan-dict?vndb_user=https%3A%2F%2Fvndb.org%2Fu306587&spoiler_level=0
+```
+
+This works correctly because `resolve_user()` is called again when Yomitan triggers the auto-update, and it will parse the URL again. However, if you prefer cleaner auto-update URLs, you can normalize the input to just the username or user ID before constructing the URLs.
 
 ### Alternative: Direct Media ID
 
@@ -283,7 +330,7 @@ Downloads a completed ZIP by token.
 |---|---|---|---|
 | `token` | string | Yes | UUID token from the `complete` SSE event |
 
-**Response (200):** `application/zip` binary data with `Content-Disposition: attachment; filename=gsm_characters.zip`
+**Response (200):** `application/zip` binary data with `Content-Disposition: attachment; filename=bee_characters.zip`
 
 **Response (404):** `"Download token not found or expired"`
 
@@ -319,10 +366,10 @@ Same parameters as `/api/yomitan-dict`.
 **Response (200):**
 ```json
 {
-  "title": "GSM Character Dictionary",
+  "title": "Bee's Character Dictionary",
   "revision": "384729104856",
   "format": 3,
-  "author": "GameSentenceMiner",
+  "author": "Bee (https://github.com/bee-san)",
   "description": "Character names dictionary",
   "downloadUrl": "http://127.0.0.1:3000/api/yomitan-dict?vndb_user=Yorhel&spoiler_level=0",
   "indexUrl": "http://127.0.0.1:3000/api/yomitan-index?vndb_user=Yorhel&spoiler_level=0",
@@ -404,7 +451,7 @@ The generated ZIP file follows the **Yomitan dictionary format version 3**.
 ### ZIP Structure
 
 ```
-gsm_characters.zip
+bee_characters.zip
 ├── index.json            # Dictionary metadata (includes auto-update URLs)
 ├── tag_bank_1.json       # Role tag definitions (fixed content)
 ├── term_bank_1.json      # Up to 10,000 term entries
@@ -420,10 +467,10 @@ gsm_characters.zip
 
 ```json
 {
-    "title": "GSM Character Dictionary",
+    "title": "Bee's Character Dictionary",
     "revision": "384729104856",
     "format": 3,
-    "author": "GameSentenceMiner",
+    "author": "Bee (https://github.com/bee-san)",
     "description": "Character names from Steins;Gate",
     "downloadUrl": "http://127.0.0.1:3000/api/yomitan-dict?vndb_user=Yorhel&spoiler_level=0",
     "indexUrl": "http://127.0.0.1:3000/api/yomitan-index?vndb_user=Yorhel&spoiler_level=0",
@@ -510,7 +557,7 @@ function on_generate_button_click():
     spoiler_level = settings.get("spoiler_level", 0)
 
     zip_bytes = generate_dictionary(vndb_user, anilist_user, spoiler_level)
-    save_file(zip_bytes, "gsm_characters.zip")
+    save_file(zip_bytes, "bee_characters.zip")
 ```
 
 The `generate_dictionary` function is what you build by porting the logic from the reference source files (see [Porting to Your Codebase](#porting-to-your-codebase)).
@@ -592,7 +639,7 @@ Read these files from the `yomitan-dict-builder/src/` directory. Each one is a s
 | File | What It Does | Priority |
 |---|---|---|
 | `models.rs` | **Read first.** Defines all shared data structures: `Character`, `CharacterTrait`, `CharacterData`, `UserMediaEntry`. Every other module depends on these types. | Required |
-| `vndb_client.rs` | VNDB REST API client. Resolves usernames to user IDs, fetches user's "Playing" list, fetches characters for a VN (paginated), downloads character portrait images and base64-encodes them. | Required if supporting VNDB |
+| `vndb_client.rs` | VNDB REST API client. Parses user input (URLs, user IDs, or usernames), resolves usernames to user IDs, fetches user's "Playing" list, fetches characters for a VN (paginated), downloads character portrait images and base64-encodes them. Contains `parse_user_input` for normalizing VNDB URLs/IDs/usernames. | Required if supporting VNDB |
 | `anilist_client.rs` | AniList GraphQL API client. Fetches user's "Currently Watching/Reading" list, fetches characters for a media title (paginated), downloads character portrait images and base64-encodes them. | Required if supporting AniList |
 | `name_parser.rs` | **Most complex module.** Japanese name parsing: detects kanji, splits names into family/given parts, converts romaji to hiragana, converts katakana to hiragana, generates mixed-script name readings, defines the 15 honorific suffixes. Contains the critical name order swap logic. | Required |
 | `content_builder.rs` | Builds Yomitan structured content JSON (the character popup card). Handles spoiler stripping for both VNDB and AniList formats, birthday/stats formatting, trait categorization with spoiler filtering, and the three-tier spoiler level system. | Required |
@@ -712,6 +759,8 @@ AniList does **not** provide: height, weight, personality traits, role categorie
 7. **The ZIP writer needs seek support.** If using Rust's `zip` crate, use `Cursor<Vec<u8>>` not bare `Vec<u8>`. Other languages typically don't have this issue, but verify your ZIP library supports in-memory ZIP creation.
 
 8. **AniList has fewer character fields than VNDB.** Height, weight, and trait categories (personality, roles, engages_in, subject_of) are all empty/None for AniList characters. Your code must handle these being absent gracefully.
+
+9. **VNDB user input must be parsed before API calls.** Users commonly paste their VNDB profile URL (e.g., `https://vndb.org/u306587`) instead of typing a plain username. The VNDB user resolution API (`GET /user?q=...`) searches by username string, so passing a full URL returns "user not found". Your code must extract the user ID from URLs before making API calls. See the [Input Format Handling](#input-format-handling) section for the full list of accepted formats and the parsing algorithm.
 
 ---
 

@@ -253,7 +253,7 @@ async fn download_zip(
                 ("content-type", "application/zip"),
                 (
                     "content-disposition",
-                    "attachment; filename=gsm_characters.zip",
+                    "attachment; filename=bee_characters.zip",
                 ),
                 ("access-control-allow-origin", "*"),
             ],
@@ -483,7 +483,7 @@ async fn generate_dict(Query(params): Query<DictQuery>) -> impl IntoResponse {
                         ("content-type", "application/zip"),
                         (
                             "content-disposition",
-                            "attachment; filename=gsm_characters.zip",
+                            "attachment; filename=bee_characters.zip",
                         ),
                         ("access-control-allow-origin", "*"),
                     ],
@@ -522,7 +522,7 @@ async fn generate_dict(Query(params): Query<DictQuery>) -> impl IntoResponse {
                     ("content-type", "application/zip"),
                     (
                         "content-disposition",
-                        "attachment; filename=gsm_characters.zip",
+                        "attachment; filename=bee_characters.zip",
                     ),
                     ("access-control-allow-origin", "*"),
                 ],
@@ -558,7 +558,7 @@ async fn generate_dict(Query(params): Query<DictQuery>) -> impl IntoResponse {
                         ("content-type", "application/zip"),
                         (
                             "content-disposition",
-                            "attachment; filename=gsm_characters.zip",
+                            "attachment; filename=bee_characters.zip",
                         ),
                         ("access-control-allow-origin", "*"),
                     ],
