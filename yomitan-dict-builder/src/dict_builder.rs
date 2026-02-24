@@ -141,10 +141,84 @@ impl DictBuilder {
             }
         }
 
+        // --- Hiragana / Katakana term entries ---
+        // When the original name contains kanji, also add entries where the term
+        // itself is the hiragana or katakana form so lookups work on kana text too.
+
+        if name_parts.has_space {
+            // Hiragana combined (no space): "すずきしんいち"
+            let hira_combined = format!("{}{}", readings.family, readings.given);
+            if !hira_combined.is_empty() && added_terms.insert(hira_combined.clone()) {
+                self.entries.push(ContentBuilder::create_term_entry(
+                    &hira_combined, &readings.full, role, score, &structured_content,
+                ));
+            }
+            // Hiragana with space: "すずき しんいち"
+            let hira_spaced = format!("{} {}", readings.family, readings.given);
+            if added_terms.insert(hira_spaced.clone()) {
+                self.entries.push(ContentBuilder::create_term_entry(
+                    &hira_spaced, &readings.full, role, score, &structured_content,
+                ));
+            }
+            // Hiragana family only
+            if !readings.family.is_empty() && added_terms.insert(readings.family.clone()) {
+                self.entries.push(ContentBuilder::create_term_entry(
+                    &readings.family, &readings.family, role, score, &structured_content,
+                ));
+            }
+            // Hiragana given only
+            if !readings.given.is_empty() && added_terms.insert(readings.given.clone()) {
+                self.entries.push(ContentBuilder::create_term_entry(
+                    &readings.given, &readings.given, role, score, &structured_content,
+                ));
+            }
+
+            // Katakana variants
+            let kata_family = name_parser::hira_to_kata(&readings.family);
+            let kata_given = name_parser::hira_to_kata(&readings.given);
+            let kata_combined = format!("{}{}", kata_family, kata_given);
+            if !kata_combined.is_empty() && added_terms.insert(kata_combined.clone()) {
+                self.entries.push(ContentBuilder::create_term_entry(
+                    &kata_combined, &readings.full, role, score, &structured_content,
+                ));
+            }
+            let kata_spaced = format!("{} {}", kata_family, kata_given);
+            if added_terms.insert(kata_spaced.clone()) {
+                self.entries.push(ContentBuilder::create_term_entry(
+                    &kata_spaced, &readings.full, role, score, &structured_content,
+                ));
+            }
+            if !kata_family.is_empty() && added_terms.insert(kata_family.clone()) {
+                self.entries.push(ContentBuilder::create_term_entry(
+                    &kata_family, &readings.family, role, score, &structured_content,
+                ));
+            }
+            if !kata_given.is_empty() && added_terms.insert(kata_given.clone()) {
+                self.entries.push(ContentBuilder::create_term_entry(
+                    &kata_given, &readings.given, role, score, &structured_content,
+                ));
+            }
+        } else {
+            // Single-word name: add hiragana and katakana forms
+            if !readings.full.is_empty() && added_terms.insert(readings.full.clone()) {
+                self.entries.push(ContentBuilder::create_term_entry(
+                    &readings.full, &readings.full, role, score, &structured_content,
+                ));
+            }
+            let kata_full = name_parser::hira_to_kata(&readings.full);
+            if !kata_full.is_empty() && added_terms.insert(kata_full.clone()) {
+                self.entries.push(ContentBuilder::create_term_entry(
+                    &kata_full, &readings.full, role, score, &structured_content,
+                ));
+            }
+        }
+
         // --- Honorific suffix variants for all base names ---
+        // Includes original kanji forms + hiragana/katakana forms
 
         let mut base_names_with_readings: Vec<(String, String)> = Vec::new();
         if name_parts.has_space {
+            // Original kanji forms
             if let Some(ref family) = name_parts.family {
                 if !family.is_empty() {
                     base_names_with_readings
@@ -165,23 +239,69 @@ impl DictBuilder {
                 base_names_with_readings
                     .push((name_parts.original.clone(), readings.full.clone()));
             }
+            // Hiragana forms (family, given, combined)
+            if !readings.family.is_empty() {
+                base_names_with_readings
+                    .push((readings.family.clone(), readings.family.clone()));
+            }
+            if !readings.given.is_empty() {
+                base_names_with_readings
+                    .push((readings.given.clone(), readings.given.clone()));
+            }
+            let hira_combined = format!("{}{}", readings.family, readings.given);
+            if !hira_combined.is_empty() {
+                base_names_with_readings
+                    .push((hira_combined, readings.full.clone()));
+            }
+            // Katakana forms (family, given, combined)
+            let kata_family = name_parser::hira_to_kata(&readings.family);
+            let kata_given = name_parser::hira_to_kata(&readings.given);
+            if !kata_family.is_empty() {
+                base_names_with_readings
+                    .push((kata_family.clone(), readings.family.clone()));
+            }
+            if !kata_given.is_empty() {
+                base_names_with_readings
+                    .push((kata_given.clone(), readings.given.clone()));
+            }
+            let kata_combined = format!("{}{}", kata_family, kata_given);
+            if !kata_combined.is_empty() {
+                base_names_with_readings
+                    .push((kata_combined, readings.full.clone()));
+            }
         } else if !name_original.is_empty() {
             base_names_with_readings
                 .push((name_original.clone(), readings.full.clone()));
+            // Hiragana form
+            if !readings.full.is_empty() {
+                base_names_with_readings
+                    .push((readings.full.clone(), readings.full.clone()));
+            }
+            // Katakana form
+            let kata_full = name_parser::hira_to_kata(&readings.full);
+            if !kata_full.is_empty() {
+                base_names_with_readings
+                    .push((kata_full, readings.full.clone()));
+            }
         }
 
         for (base_name, base_reading) in &base_names_with_readings {
-            for (suffix, suffix_reading) in HONORIFIC_SUFFIXES {
+            for (suffix, suffix_reading, description) in HONORIFIC_SUFFIXES {
                 let term_with_suffix = format!("{}{}", base_name, suffix);
                 let reading_with_suffix = format!("{}{}", base_reading, suffix_reading);
 
                 if added_terms.insert(term_with_suffix.clone()) {
+                    let honorific_content = ContentBuilder::build_honorific_content(
+                        &structured_content,
+                        suffix,
+                        description,
+                    );
                     self.entries.push(ContentBuilder::create_term_entry(
                         &term_with_suffix,
                         &reading_with_suffix,
                         role,
                         score,
-                        &structured_content,
+                        &honorific_content,
                     ));
                 }
             }
@@ -200,17 +320,22 @@ impl DictBuilder {
                 ));
 
                 // Also add honorific variants for each alias
-                for (suffix, suffix_reading) in HONORIFIC_SUFFIXES {
+                for (suffix, suffix_reading, description) in HONORIFIC_SUFFIXES {
                     let alias_with_suffix = format!("{}{}", alias, suffix);
                     let reading_with_suffix = format!("{}{}", readings.full, suffix_reading);
 
                     if added_terms.insert(alias_with_suffix.clone()) {
+                        let honorific_content = ContentBuilder::build_honorific_content(
+                            &structured_content,
+                            suffix,
+                            description,
+                        );
                         self.entries.push(ContentBuilder::create_term_entry(
                             &alias_with_suffix,
                             &reading_with_suffix,
                             role,
                             score,
-                            &structured_content,
+                            &honorific_content,
                         ));
                     }
                 }
@@ -410,6 +535,42 @@ mod tests {
         assert!(
             terms.iter().any(|t| t.ends_with("ちゃん")),
             "Should have -chan variants"
+        );
+    }
+
+    #[test]
+    fn test_honorific_entry_uses_honorific_content() {
+        let mut builder = DictBuilder::new(0, None, "Test".to_string());
+        let char = make_test_character("c1", "Shinichi Suzuki", "須々木 心一", "main");
+        builder.add_character(&char, "Test Game");
+
+        // Find an entry ending with さん
+        let san_entry = builder
+            .entries
+            .iter()
+            .find(|e| {
+                e[0].as_str()
+                    .map(|s| s.ends_with("さん") && s != "さん")
+                    .unwrap_or(false)
+            })
+            .expect("Should have a -san honorific entry");
+
+        // The definitions array is at index 5, first element is the structured content
+        let definitions = san_entry[5].as_array().unwrap();
+        let sc = &definitions[0];
+        let content_arr = sc["content"].as_array().unwrap();
+
+        // First element should be the honorific banner div
+        let banner = &content_arr[0];
+        assert_eq!(banner["tag"], "div");
+        let banner_content = banner["content"].as_array().unwrap();
+        assert_eq!(banner_content[0]["content"], "さん");
+        assert!(
+            banner_content[1]["content"]
+                .as_str()
+                .unwrap()
+                .contains("Generic polite"),
+            "Banner should contain the honorific description"
         );
     }
 

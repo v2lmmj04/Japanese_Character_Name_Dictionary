@@ -309,6 +309,49 @@ impl ContentBuilder {
         })
     }
 
+    /// Build a structured content card with an honorific description banner.
+    /// Clones the base content and prepends a styled honorific note.
+    pub fn build_honorific_content(
+        base_content: &serde_json::Value,
+        suffix_display: &str,
+        suffix_description: &str,
+    ) -> serde_json::Value {
+        let mut content_array = match base_content.get("content") {
+            Some(serde_json::Value::Array(arr)) => arr.clone(),
+            _ => return base_content.clone(),
+        };
+
+        // Honorific banner: styled div at the top of the card
+        let banner = json!({
+            "tag": "div",
+            "style": {
+                "fontSize": "0.85em",
+                "color": "#4A90D9",
+                "borderLeft": "3px solid #4A90D9",
+                "paddingLeft": "6px",
+                "marginBottom": "6px"
+            },
+            "content": [
+                {
+                    "tag": "span",
+                    "style": { "fontWeight": "bold" },
+                    "content": suffix_display
+                },
+                {
+                    "tag": "span",
+                    "content": format!(" — {}", suffix_description)
+                }
+            ]
+        });
+
+        content_array.insert(0, banner);
+
+        json!({
+            "type": "structured-content",
+            "content": content_array
+        })
+    }
+
     /// Create a single Yomitan term entry.
     pub fn create_term_entry(
         term: &str,
@@ -603,4 +646,51 @@ mod tests {
         let arr = entry.as_array().unwrap();
         assert_eq!(arr[2], "name");
     }
+
+    // === Honorific content tests ===
+
+    #[test]
+    fn test_build_honorific_content_prepends_banner() {
+        let base = json!({
+            "type": "structured-content",
+            "content": [
+                { "tag": "div", "content": "original" }
+            ]
+        });
+        let result = ContentBuilder::build_honorific_content(&base, "さん", "Generic polite suffix (Mr./Ms./Mrs.)");
+        let items = result["content"].as_array().unwrap();
+        // Banner should be first element
+        assert_eq!(items[0]["tag"], "div");
+        let banner_content = items[0]["content"].as_array().unwrap();
+        assert_eq!(banner_content[0]["content"], "さん");
+        assert!(banner_content[1]["content"].as_str().unwrap().contains("Generic polite"));
+        // Original content should follow
+        assert_eq!(items[1]["content"], "original");
+    }
+
+    #[test]
+    fn test_build_honorific_content_preserves_base() {
+        let base = json!({
+            "type": "structured-content",
+            "content": [
+                { "tag": "div", "content": "first" },
+                { "tag": "div", "content": "second" }
+            ]
+        });
+        let result = ContentBuilder::build_honorific_content(&base, "様", "Very formal/respectful");
+        let items = result["content"].as_array().unwrap();
+        // Banner + 2 original items = 3 total
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[1]["content"], "first");
+        assert_eq!(items[2]["content"], "second");
+    }
+
+    #[test]
+    fn test_build_honorific_content_no_content_array() {
+        // If base content doesn't have a content array, return base unchanged
+        let base = json!({"type": "structured-content"});
+        let result = ContentBuilder::build_honorific_content(&base, "さん", "test");
+        assert_eq!(result, base);
+    }
 }
+
