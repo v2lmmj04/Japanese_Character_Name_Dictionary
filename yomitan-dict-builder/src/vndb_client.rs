@@ -539,4 +539,54 @@ mod tests {
     fn test_parse_user_input_url_with_whitespace() {
         assert_user_id("  https://vndb.org/u306587  ", "u306587");
     }
+
+    // === Edge case: parse_user_input boundary inputs ===
+
+    #[test]
+    fn test_parse_user_input_bare_u() {
+        // "u" alone — length is 1, so the `len() > 1` check fails
+        assert_username("u", "u");
+    }
+
+    #[test]
+    fn test_parse_user_input_u_with_non_numeric() {
+        // "u123abc" — not all digits after 'u', treated as username
+        assert_username("u123abc", "u123abc");
+    }
+
+    #[test]
+    fn test_parse_user_input_empty() {
+        assert_username("", "");
+    }
+
+    #[test]
+    fn test_parse_user_input_url_with_non_user_path() {
+        // vndb.org/v17 — not a user ID (starts with 'v', not 'u')
+        assert_username("https://vndb.org/v17", "https://vndb.org/v17");
+    }
+
+    #[test]
+    fn test_parse_user_input_url_with_username_path() {
+        // vndb.org/yorhel — not a uNNN pattern, treated as username
+        assert_username("https://vndb.org/yorhel", "https://vndb.org/yorhel");
+    }
+
+    // === Edge case: normalize_id boundary inputs ===
+
+    #[test]
+    fn test_normalize_id_empty() {
+        // Empty string → "v"
+        assert_eq!(VndbClient::normalize_id(""), "v");
+    }
+
+    #[test]
+    fn test_normalize_id_just_v() {
+        // "v" alone → "v" (slices &id[1..] which is empty)
+        assert_eq!(VndbClient::normalize_id("v"), "v");
+    }
+
+    #[test]
+    fn test_normalize_id_zero() {
+        assert_eq!(VndbClient::normalize_id("0"), "v0");
+    }
 }

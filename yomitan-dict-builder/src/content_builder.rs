@@ -898,5 +898,229 @@ mod tests {
         let result = ContentBuilder::build_honorific_content(&base, "さん", "test");
         assert_eq!(result, base);
     }
+
+    // === Edge case: nested spoiler tags ===
+
+    #[test]
+    fn test_strip_spoilers_nested_vndb() {
+        // Non-greedy regex matches first [spoiler] to first [/spoiler],
+        // leaving the outer closing tag as visible text
+        let result = ContentBuilder::strip_spoilers(
+            "[spoiler]outer [spoiler]inner[/spoiler] still hidden[/spoiler]"
+        );
+        // First match: "[spoiler]outer [spoiler]inner[/spoiler]" is removed
+        // Remaining: " still hidden[/spoiler]"
+        assert!(result.contains("still hidden"), "Nested spoiler leaves partial text: '{}'", result);
+    }
+
+    #[test]
+    fn test_strip_spoilers_multiple_separate() {
+        let result = ContentBuilder::strip_spoilers(
+            "a [spoiler]x[/spoiler] b [spoiler]y[/spoiler] c"
+        );
+        assert_eq!(result, "a  b  c");
+    }
+
+    #[test]
+    fn test_strip_spoilers_anilist_multiline() {
+        let result = ContentBuilder::strip_spoilers("before ~!line1\nline2!~ after");
+        assert_eq!(result, "before  after");
+    }
+
+    #[test]
+    fn test_strip_spoilers_only_spoiler_content() {
+        let result = ContentBuilder::strip_spoilers("[spoiler]everything[/spoiler]");
+        assert_eq!(result, "");
+    }
+
+    // === Edge case: BBCode mismatched tags ===
+
+    #[test]
+    fn test_parse_bbcode_mismatched_tags() {
+        // [b]...[/i] — mismatched, should strip tags and keep content
+        let result = ContentBuilder::parse_bbcode_to_structured("[b]text[/i]");
+        // The regex matches [b]text[/i] as a capture, detects mismatch,
+        // strips the tags and keeps "text"
+        assert_eq!(result, json!("text"));
+    }
+
+    #[test]
+    fn test_parse_bbcode_empty_tags() {
+        let result = ContentBuilder::parse_bbcode_to_structured("[b][/b]");
+        assert_eq!(
+            result,
+            json!({"tag": "span", "style": {"fontWeight": "bold"}, "content": ""})
+        );
+    }
+
+    #[test]
+    fn test_parse_bbcode_unclosed_tag() {
+        // No closing tag — regex doesn't match, passes through as-is
+        let result = ContentBuilder::parse_bbcode_to_structured("[b]no close");
+        assert_eq!(result, json!("[b]no close"));
+    }
+
+    // === Edge case: birthday with invalid month ===
+
+    #[test]
+    fn test_format_birthday_invalid_month() {
+        assert_eq!(ContentBuilder::format_birthday(&[13, 1]), "Unknown 1");
+        assert_eq!(ContentBuilder::format_birthday(&[0, 15]), "Unknown 15");
+    }
+
+    #[test]
+    fn test_format_birthday_zero_day() {
+        // Day 0 is technically invalid but we just format it
+        assert_eq!(ContentBuilder::format_birthday(&[1, 0]), "January 0");
+    }
+
+    // === Edge case: format_stats with unusual values ===
+
+    #[test]
+    fn test_format_stats_unknown_sex() {
+        let cb = ContentBuilder::new(2);
+        let mut char = make_test_character();
+        char.sex = Some("X".to_string());
+        char.age = None;
+        char.height = None;
+        char.weight = None;
+        char.blood_type = None;
+        char.birthday = None;
+        let stats = cb.format_stats(&char);
+        // "X" is not in SEX_DISPLAY, so it's silently skipped
+        assert_eq!(stats, "");
+    }
+
+    #[test]
+    fn test_format_stats_zero_height_weight() {
+        let cb = ContentBuilder::new(2);
+        let mut char = make_test_character();
+        char.sex = None;
+        char.age = None;
+        char.height = Some(0);
+        char.weight = Some(0);
+        char.blood_type = None;
+        char.birthday = None;
+        let stats = cb.format_stats(&char);
+        assert!(stats.contains("0cm"));
+        assert!(stats.contains("0kg"));
+    }
+
+    #[test]
+    fn test_format_stats_female() {
+        let cb = ContentBuilder::new(2);
+        let mut char = make_test_character();
+        char.sex = Some("f".to_string());
+        char.age = None;
+        char.height = None;
+        char.weight = None;
+        char.blood_type = None;
+        char.birthday = None;
+        let stats = cb.format_stats(&char);
+        assert!(stats.contains("Female"));
+    }
+
+    #[test]
+    fn test_format_stats_female_full_word() {
+        let cb = ContentBuilder::new(2);
+        let mut char = make_test_character();
+        char.sex = Some("female".to_string());
+        char.age = None;
+        char.height = None;
+        char.weight = None;
+        char.blood_type = None;
+        char.birthday = None;
+        let stats = cb.format_stats(&char);
+        assert!(stats.contains("Female"));
+    }
+
+    // === Edge case: build_content with unknown role ===
+
+    #[test]
+    fn test_build_content_unknown_role() {
+        let cb = ContentBuilder::new(0);
+        let mut char = make_test_character();
+        char.role = "custom_role".to_string();
+        let content = cb.build_content(&char, None, "Test");
+        let items = content["content"].as_array().unwrap();
+        // Should use fallback color and "Unknown" label
+        let role_span = items.iter().find(|v| {
+            v["style"]["background"].as_str() == Some("#9E9E9E")
+        });
+        assert!(role_span.is_some(), "Unknown role should use gray fallback");
+        assert_eq!(role_span.unwrap()["content"], "Unknown");
+    }
+
+    // === Edge case: build_content with empty game title ===
+
+    #[test]
+    fn test_build_content_empty_game_title() {
+        let cb = ContentBuilder::new(0);
+        let char = make_test_character();
+        let content = cb.build_content(&char, None, "");
+        let content_str = serde_json::to_string(&content).unwrap();
+        // Empty game title should not produce a "From: " div
+        assert!(!content_str.contains("From: "));
+    }
+
+    // === Edge case: description becomes empty after spoiler stripping ===
+
+    #[test]
+    fn test_build_content_description_only_spoilers() {
+        let cb = ContentBuilder::new(1);
+        let mut char = make_test_character();
+        char.description = Some("[spoiler]everything is hidden[/spoiler]".to_string());
+        let content = cb.build_content(&char, None, "Test");
+        let items = content["content"].as_array().unwrap();
+        // After stripping, description is empty → no Description details section
+        let desc_details = items.iter().find(|v| {
+            if let Some(arr) = v["content"].as_array() {
+                arr.iter().any(|c| c["content"].as_str() == Some("Description"))
+            } else {
+                false
+            }
+        });
+        assert!(desc_details.is_none(), "Empty description after stripping should not produce a details section");
+    }
+
+    // === Edge case: traits with empty names filtered out ===
+
+    #[test]
+    fn test_traits_empty_name_filtered() {
+        let cb = ContentBuilder::new(2);
+        let mut char = make_test_character();
+        char.personality = vec![
+            CharacterTrait { name: "".to_string(), spoiler: 0 },
+            CharacterTrait { name: "Kind".to_string(), spoiler: 0 },
+        ];
+        char.roles = vec![];
+        let items = cb.build_traits_by_category(&char);
+        let all_text: String = items.iter()
+            .filter_map(|i| i["content"].as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(all_text.contains("Kind"));
+        // Empty name should not appear
+        assert!(!all_text.contains("Personality: , "));
+    }
+
+    // === Edge case: description with mixed spoiler formats ===
+
+    #[test]
+    fn test_strip_spoilers_mixed_formats() {
+        let result = ContentBuilder::strip_spoilers(
+            "visible [spoiler]vndb hidden[/spoiler] middle ~!anilist hidden!~ end"
+        );
+        assert_eq!(result, "visible  middle  end");
+    }
+
+    // === Edge case: VNDB markup with BBCode inside spoiler ===
+
+    #[test]
+    fn test_spoiler_then_bbcode() {
+        // Spoiler stripping happens before BBCode parsing in build_content
+        let stripped = ContentBuilder::strip_spoilers("[spoiler][b]hidden bold[/b][/spoiler] visible");
+        assert_eq!(stripped, "visible");
+    }
 }
 

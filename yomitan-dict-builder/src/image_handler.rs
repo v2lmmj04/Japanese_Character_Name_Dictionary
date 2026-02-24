@@ -188,4 +188,70 @@ mod tests {
         assert_eq!(ImageHandler::make_filename("42", "webp"), "c42.webp");
         assert_eq!(ImageHandler::make_filename("c100", "jpg"), "cc100.jpg");
     }
+
+    // === Edge case: detect_extension boundary sizes ===
+
+    #[test]
+    fn test_detect_extension_exactly_3_bytes_jpeg() {
+        // 3 bytes: JPEG magic is FF D8 FF, but len < 4 so check fails
+        assert_eq!(ImageHandler::detect_extension(&[0xFF, 0xD8, 0xFF]), "jpg");
+    }
+
+    #[test]
+    fn test_detect_extension_empty() {
+        assert_eq!(ImageHandler::detect_extension(&[]), "jpg");
+    }
+
+    #[test]
+    fn test_detect_extension_single_byte() {
+        assert_eq!(ImageHandler::detect_extension(&[0xFF]), "jpg");
+    }
+
+    #[test]
+    fn test_detect_extension_webp_incomplete_header() {
+        // RIFF header but only 8 bytes (needs 12 for WebP check)
+        let partial = [0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00];
+        assert_eq!(ImageHandler::detect_extension(&partial), "jpg");
+    }
+
+    // === Edge case: resize with empty bytes ===
+
+    #[test]
+    fn test_resize_empty_bytes() {
+        let (result, ext) = ImageHandler::resize_image(&[]);
+        assert!(result.is_empty());
+        assert_eq!(ext, "jpg"); // fallback
+    }
+
+    // === Edge case: resize 1x1 image ===
+
+    #[test]
+    fn test_resize_1x1_image() {
+        let img = image::RgbImage::from_pixel(1, 1, image::Rgb([128, 128, 128]));
+        let mut buf = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut buf, ImageFormat::Png).unwrap();
+        let png_bytes = buf.into_inner();
+
+        let (resized, ext) = ImageHandler::resize_image(&png_bytes);
+        assert_eq!(ext, "webp");
+        assert!(!resized.is_empty());
+    }
+
+    // === Edge case: make_filename with special characters ===
+
+    #[test]
+    fn test_make_filename_with_slash() {
+        // Documents that path traversal chars are NOT sanitized
+        assert_eq!(ImageHandler::make_filename("../etc", "jpg"), "c../etc.jpg");
+    }
+
+    #[test]
+    fn test_make_filename_empty_id() {
+        assert_eq!(ImageHandler::make_filename("", "jpg"), "c.jpg");
+    }
+
+    #[test]
+    fn test_make_filename_empty_ext() {
+        assert_eq!(ImageHandler::make_filename("42", ""), "c42.");
+    }
 }
