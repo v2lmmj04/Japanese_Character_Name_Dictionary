@@ -97,7 +97,7 @@ impl DiskImageCache {
             return;
         }
 
-        // Write metadata
+        // Write metadata atomically via tmp+rename
         let meta = CacheMeta {
             url: url.to_string(),
             ext: ext.to_string(),
@@ -107,9 +107,14 @@ impl DiskImageCache {
                 .unwrap_or_default()
                 .as_secs(),
         };
-        let meta_path = self.dir.join(format!("{}.meta", hash));
         if let Ok(json) = serde_json::to_vec(&meta) {
-            let _ = tokio::fs::write(&meta_path, &json).await;
+            let tmp_meta = self.dir.join(format!("{}.meta.tmp", hash));
+            let final_meta = self.dir.join(format!("{}.meta", hash));
+            if tokio::fs::write(&tmp_meta, &json).await.is_ok() {
+                if tokio::fs::rename(&tmp_meta, &final_meta).await.is_err() {
+                    let _ = tokio::fs::remove_file(&tmp_meta).await;
+                }
+            }
         }
     }
 
@@ -126,8 +131,8 @@ impl DiskImageCache {
     }
 }
 
-/// Walk the cache directory and remove expired entries.
-async fn cleanup_expired(dir: &PathBuf) {
+/// Walk the cache directory and remove expired entries and orphaned files.
+async fn cleanup_expired(dir: &std::path::Path) {
     let mut entries = match tokio::fs::read_dir(dir).await {
         Ok(e) => e,
         Err(_) => return,
@@ -135,6 +140,7 @@ async fn cleanup_expired(dir: &PathBuf) {
 
     let mut removed = 0u64;
     let mut kept = 0u64;
+    let mut orphaned_imgs: Vec<PathBuf> = Vec::new();
 
     while let Ok(Some(entry)) = entries.next_entry().await {
         let path = entry.path();
@@ -142,6 +148,18 @@ async fn cleanup_expired(dir: &PathBuf) {
             Some(n) => n.to_string(),
             None => continue,
         };
+
+        // Skip tmp files (leftover from interrupted writes)
+        if name.ends_with(".tmp") {
+            let _ = tokio::fs::remove_file(&path).await;
+            continue;
+        }
+
+        // Collect .img files to check for orphans after the meta pass
+        if name.ends_with(".img") {
+            orphaned_imgs.push(path);
+            continue;
+        }
 
         // Only inspect .meta files — if meta is expired, remove both .meta and .img
         if !name.ends_with(".meta") {
@@ -172,6 +190,18 @@ async fn cleanup_expired(dir: &PathBuf) {
             removed += 1;
         } else {
             kept += 1;
+        }
+    }
+
+    // Remove orphaned .img files that have no corresponding .meta
+    for img_path in orphaned_imgs {
+        if let Some(name) = img_path.file_name().and_then(|n| n.to_str()) {
+            let hash = name.trim_end_matches(".img");
+            let meta_path = dir.join(format!("{}.meta", hash));
+            if !meta_path.exists() {
+                let _ = tokio::fs::remove_file(&img_path).await;
+                removed += 1;
+            }
         }
     }
 
