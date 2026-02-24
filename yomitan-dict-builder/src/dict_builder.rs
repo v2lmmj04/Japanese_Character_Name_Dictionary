@@ -1413,4 +1413,185 @@ mod tests {
             }
         }
     }
+
+    // === Edge case: honorifics disabled ===
+
+    #[test]
+    fn test_honorifics_disabled_no_suffix_entries() {
+        let mut builder = DictBuilder::new(0, None, "Test".to_string(), false);
+        let char = make_test_character("c1", "Shinichi Suzuki", "須々木 心一", "main");
+        builder.add_character(&char, "Test Game");
+
+        let terms: Vec<String> = builder
+            .entries
+            .iter()
+            .filter_map(|e| e[0].as_str().map(|s| s.to_string()))
+            .collect();
+
+        // Should NOT have any honorific variants
+        assert!(
+            !terms.iter().any(|t| t.ends_with("さん")),
+            "honorifics=false should not produce -san variants"
+        );
+        assert!(
+            !terms.iter().any(|t| t.ends_with("ちゃん")),
+            "honorifics=false should not produce -chan variants"
+        );
+
+        // Should still have base entries
+        assert!(terms.contains(&"須々木 心一".to_string()));
+        assert!(terms.contains(&"須々木".to_string()));
+        assert!(terms.contains(&"心一".to_string()));
+    }
+
+    // === Edge case: character with space-only name_original ===
+
+    #[test]
+    fn test_add_character_space_only_name() {
+        let mut builder = DictBuilder::new(0, None, "Test".to_string(), false);
+        let char = make_test_character("c1", "Name", " ", "main");
+        builder.add_character(&char, "Test");
+
+        // " " splits into family="" and given=""
+        // Empty checks should prevent entries for empty parts
+        let terms: Vec<String> = builder
+            .entries
+            .iter()
+            .filter_map(|e| e[0].as_str().map(|s| s.to_string()))
+            .collect();
+
+        // The original " " entry might be added, but empty family/given should not
+        assert!(
+            !terms.iter().any(|t| t.is_empty()),
+            "Should not have entries with empty terms"
+        );
+    }
+
+    // === Edge case: alias identical to kana reading ===
+
+    #[test]
+    fn test_alias_matching_kana_reading_deduplicated() {
+        let mut builder = DictBuilder::new(0, None, "Test".to_string(), false);
+        let mut char = make_test_character("c1", "Saber", "セイバー", "main");
+        // Alias is the hiragana form of the name
+        char.aliases = vec!["せいばー".to_string()];
+        builder.add_character(&char, "Test");
+
+        let terms: Vec<String> = builder
+            .entries
+            .iter()
+            .filter_map(|e| e[0].as_str().map(|s| s.to_string()))
+            .collect();
+
+        // "せいばー" should appear only once (either from kana generation or alias, not both)
+        let count = terms.iter().filter(|t| t.as_str() == "せいばー").count();
+        assert_eq!(count, 1, "Alias matching kana reading should be deduplicated");
+    }
+
+    // === Edge case: two characters with same name ===
+
+    #[test]
+    fn test_two_characters_same_name_both_get_entries() {
+        let mut builder = DictBuilder::new(0, None, "Test".to_string(), false);
+        let char1 = make_test_character("c1", "Saber", "セイバー", "main");
+        let char2 = make_test_character("c2", "Saber", "セイバー", "side");
+        builder.add_character(&char1, "Game A");
+        builder.add_character(&char2, "Game B");
+
+        // Both characters should produce entries (no cross-character dedup)
+        // The terms will be the same but the structured content differs
+        let saber_entries: Vec<&serde_json::Value> = builder
+            .entries
+            .iter()
+            .filter(|e| e[0].as_str() == Some("セイバー"))
+            .collect();
+
+        assert!(
+            saber_entries.len() >= 2,
+            "Two characters with same name should both produce entries, got {}",
+            saber_entries.len()
+        );
+    }
+
+    // === Edge case: character with many empty aliases ===
+
+    #[test]
+    fn test_empty_aliases_skipped() {
+        let mut builder = DictBuilder::new(0, None, "Test".to_string(), false);
+        let mut char = make_test_character("c1", "Name", "名前", "main");
+        char.aliases = vec!["".to_string(), "".to_string(), "Valid".to_string(), "".to_string()];
+        builder.add_character(&char, "Test");
+
+        let terms: Vec<String> = builder
+            .entries
+            .iter()
+            .filter_map(|e| e[0].as_str().map(|s| s.to_string()))
+            .collect();
+
+        assert!(terms.contains(&"Valid".to_string()), "Non-empty alias should be present");
+        // Empty aliases should not produce entries
+        let empty_count = terms.iter().filter(|t| t.is_empty()).count();
+        assert_eq!(empty_count, 0, "Empty aliases should not produce entries");
+    }
+
+    // === Edge case: hiragana and katakana term entries ===
+
+    #[test]
+    fn test_kana_term_entries_generated() {
+        let mut builder = DictBuilder::new(0, None, "Test".to_string(), false);
+        let char = make_test_character("c1", "Shinichi Suzuki", "須々木 心一", "main");
+        builder.add_character(&char, "Test");
+
+        let terms: Vec<String> = builder
+            .entries
+            .iter()
+            .filter_map(|e| e[0].as_str().map(|s| s.to_string()))
+            .collect();
+
+        // Should have hiragana and katakana variants
+        // The readings come from alphabet_to_kana("shinichi") and alphabet_to_kana("suzuki")
+        let has_hiragana = terms.iter().any(|t| {
+            t.chars().all(|c| {
+                let code = c as u32;
+                (0x3041..=0x3096).contains(&code) || c == ' '
+            }) && !t.is_empty()
+        });
+        let has_katakana = terms.iter().any(|t| {
+            t.chars().all(|c| {
+                let code = c as u32;
+                (0x30A1..=0x30F6).contains(&code) || c == ' '
+            }) && !t.is_empty()
+        });
+
+        assert!(has_hiragana, "Should have hiragana term entries");
+        assert!(has_katakana, "Should have katakana term entries");
+    }
+
+    // === Edge case: index URL replacement ===
+
+    #[test]
+    fn test_index_url_replacement() {
+        let builder = DictBuilder::new(
+            0,
+            Some("http://localhost:3000/api/yomitan-dict?source=vndb&id=v17&spoiler_level=0".to_string()),
+            "Test".to_string(),
+            true,
+        );
+        let index = builder.create_index_public();
+        let index_url = index["indexUrl"].as_str().unwrap();
+        assert!(index_url.contains("/api/yomitan-index"));
+        assert!(!index_url.contains("/api/yomitan-dict"));
+        // Query params should be preserved
+        assert!(index_url.contains("source=vndb"));
+        assert!(index_url.contains("id=v17"));
+    }
+
+    // === Edge case: unknown role score ===
+
+    #[test]
+    fn test_unknown_role_score_zero() {
+        assert_eq!(get_score("custom"), 0);
+        assert_eq!(get_score(""), 0);
+        assert_eq!(get_score("MAIN"), 0); // case-sensitive
+    }
 }

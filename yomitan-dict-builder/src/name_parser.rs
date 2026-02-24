@@ -873,8 +873,9 @@ mod tests {
 
     #[test]
     fn test_alphabet_to_kana_special_chars_passthrough() {
-        assert_eq!(alphabet_to_kana("o'clock"), "おっlock");
-        // Apostrophe and unknown chars pass through
+        // o → お, ' passes through, c+l don't match romaji,
+        // o → お, c+k don't match romaji
+        assert_eq!(alphabet_to_kana("o'clock"), "お'clおck");
     }
 
     // === Edge case: katakana long vowel mark ===

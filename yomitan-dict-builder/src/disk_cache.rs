@@ -323,4 +323,95 @@ mod tests {
 
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }
+
+    // === Edge case: CacheMeta with timestamp 0 ===
+
+    #[test]
+    fn test_cache_meta_timestamp_zero_is_expired() {
+        let meta = CacheMeta {
+            url: "https://example.com/img.jpg".to_string(),
+            ext: "webp".to_string(),
+            size: 1024,
+            created_at: 0,
+        };
+        assert!(meta.is_expired(), "Timestamp 0 should be expired");
+    }
+
+    // === Edge case: CacheMeta with future timestamp ===
+
+    #[test]
+    fn test_cache_meta_future_timestamp_not_expired() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let meta = CacheMeta {
+            url: "https://example.com/img.jpg".to_string(),
+            ext: "webp".to_string(),
+            size: 1024,
+            created_at: now + 3600, // 1 hour in the future
+        };
+        // saturating_sub: now - future = 0, which is < TTL
+        assert!(!meta.is_expired(), "Future timestamp should not be expired");
+    }
+
+    // === Edge case: empty URL hash ===
+
+    #[test]
+    fn test_url_hash_empty_string() {
+        let h = url_hash("");
+        assert_eq!(h.len(), 64);
+        // Should still produce a valid hash
+        assert!(h.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    // === Edge case: cache get on non-existent directory ===
+
+    #[tokio::test]
+    async fn test_disk_cache_get_nonexistent_url() {
+        let dir = std::env::temp_dir().join(format!("yomitan_test_{}", uuid::Uuid::new_v4()));
+        let cache = DiskImageCache::new(dir.clone()).await;
+
+        // Get on a URL that was never put
+        assert!(cache.get("https://never-stored.com/img.jpg").await.is_none());
+
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    // === Edge case: put with empty bytes ===
+
+    #[tokio::test]
+    async fn test_disk_cache_put_empty_bytes() {
+        let dir = std::env::temp_dir().join(format!("yomitan_test_{}", uuid::Uuid::new_v4()));
+        let cache = DiskImageCache::new(dir.clone()).await;
+
+        let url = "https://example.com/empty.jpg";
+        cache.put(url, &[], "jpg").await;
+
+        let result = cache.get(url).await;
+        assert!(result.is_some());
+        let (bytes, ext) = result.unwrap();
+        assert!(bytes.is_empty());
+        assert_eq!(ext, "jpg");
+
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    // === Edge case: put with empty extension ===
+
+    #[tokio::test]
+    async fn test_disk_cache_put_empty_extension() {
+        let dir = std::env::temp_dir().join(format!("yomitan_test_{}", uuid::Uuid::new_v4()));
+        let cache = DiskImageCache::new(dir.clone()).await;
+
+        let url = "https://example.com/noext";
+        cache.put(url, &[1, 2, 3], "").await;
+
+        let result = cache.get(url).await;
+        assert!(result.is_some());
+        let (_, ext) = result.unwrap();
+        assert_eq!(ext, "");
+
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
 }

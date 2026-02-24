@@ -991,4 +991,101 @@ mod tests {
             else { english.to_string() };
         assert_eq!(title, "Attack on Titan");
     }
+
+    // === Edge case: gender edge cases ===
+
+    #[test]
+    fn test_process_character_gender_empty_string() {
+        let client = make_client();
+        let edge = make_edge("MAIN", 1, "A", "あ", Some(""), None, None, None, None, vec![], None);
+        let ch = client.process_character(&edge).unwrap();
+        // Empty string → chars().next() returns None → sex is None
+        assert!(ch.sex.is_none());
+    }
+
+    #[test]
+    fn test_process_character_gender_case_insensitive() {
+        let client = make_client();
+        // "FEMALE" should still map to "f" (lowercased first char)
+        let edge = make_edge("MAIN", 1, "A", "あ", Some("FEMALE"), None, None, None, None, vec![], None);
+        let ch = client.process_character(&edge).unwrap();
+        assert_eq!(ch.sex, Some("f".to_string()));
+    }
+
+    // === Edge case: age as empty string ===
+
+    #[test]
+    fn test_process_character_age_empty_string() {
+        let client = make_client();
+        let edge = make_edge("MAIN", 1, "A", "あ", None, Some(serde_json::json!("")), None, None, None, vec![], None);
+        let ch = client.process_character(&edge).unwrap();
+        // Empty string is still Some("")
+        assert_eq!(ch.age, Some("".to_string()));
+    }
+
+    // === Edge case: birthday with month only (day null) already tested ===
+    // === Edge case: birthday with month 0 ===
+
+    #[test]
+    fn test_process_character_birthday_month_zero() {
+        let client = make_client();
+        let mut edge = make_edge("MAIN", 1, "A", "あ", None, None, None, None, None, vec![], None);
+        edge["node"]["dateOfBirth"] = serde_json::json!({"month": 0, "day": 15});
+        let ch = client.process_character(&edge).unwrap();
+        // month=0 is technically valid as u64, so birthday is Some([0, 15])
+        assert_eq!(ch.birthday, Some(vec![0, 15]));
+    }
+
+    // === Edge case: all title fields null ===
+
+    #[test]
+    fn test_title_all_null() {
+        let title_data = serde_json::json!({"native": null, "romaji": null, "english": null});
+        let native = title_data["native"].as_str().unwrap_or("");
+        let romaji = title_data["romaji"].as_str().unwrap_or("");
+        let english = title_data["english"].as_str().unwrap_or("");
+        let title = if !native.is_empty() { native.to_string() }
+            else if !romaji.is_empty() { romaji.to_string() }
+            else { english.to_string() };
+        assert_eq!(title, "");
+    }
+
+    // === Edge case: all title fields empty strings ===
+
+    #[test]
+    fn test_title_all_empty_strings() {
+        let title_data = serde_json::json!({"native": "", "romaji": "", "english": ""});
+        let native = title_data["native"].as_str().unwrap_or("");
+        let romaji = title_data["romaji"].as_str().unwrap_or("");
+        let english = title_data["english"].as_str().unwrap_or("");
+        let title = if !native.is_empty() { native.to_string() }
+            else if !romaji.is_empty() { romaji.to_string() }
+            else { english.to_string() };
+        assert_eq!(title, "");
+    }
+
+    // === Edge case: alternatives with null values ===
+
+    #[test]
+    fn test_process_character_alternatives_with_nulls() {
+        let client = make_client();
+        let mut edge = make_edge("MAIN", 1, "A", "あ", None, None, None, None, None, vec![], None);
+        edge["node"]["name"]["alternative"] = serde_json::json!([null, "Valid", null, "Also Valid"]);
+        let ch = client.process_character(&edge).unwrap();
+        // filter_map(|v| v.as_str()) skips nulls
+        assert_eq!(ch.aliases, vec!["Valid", "Also Valid"]);
+    }
+
+    // === Edge case: hasNextPage missing ===
+
+    #[test]
+    fn test_pagination_has_next_page_missing() {
+        let response = serde_json::json!({
+            "data": {"Media": {"characters": {"pageInfo": {}, "edges": []}}}
+        });
+        let has_next = response["data"]["Media"]["characters"]["pageInfo"]["hasNextPage"]
+            .as_bool()
+            .unwrap_or(false);
+        assert!(!has_next, "Missing hasNextPage should default to false");
+    }
 }
