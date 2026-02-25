@@ -1,10 +1,12 @@
+<p align="center">
+  <img src="main_image.png" alt="Bee's Character Dictionary Builder" width="700">
+  <br><br>
+  <a href="https://characterdictionary.tokyo">https://characterdictionary.tokyo</a>
+</p>
+
 # Yomitan Character Dictionary Builder
 
 A web application that generates **Yomitan-compatible character dictionaries** from VNDB (Visual Novel Database) and AniList (Anime/Manga). When installed in Yomitan (a browser dictionary extension for Japanese), looking up a character's Japanese name shows a rich popup card with their portrait, role, stats, and description.
-
-<Image>
-
-<website>
 
 ## Features
 
