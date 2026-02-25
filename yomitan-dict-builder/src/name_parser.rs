@@ -11,9 +11,9 @@ pub struct JapaneseNameParts {
 /// Name reading results.
 #[derive(Debug, Clone)]
 pub struct NameReadings {
-    pub full: String,    // Full hiragana reading (family + given)
-    pub family: String,  // Family name hiragana reading
-    pub given: String,   // Given name hiragana reading
+    pub full: String,   // Full hiragana reading (family + given)
+    pub family: String, // Family name hiragana reading
+    pub given: String,  // Given name hiragana reading
 }
 
 /// Honorific suffixes: (display form, hiragana reading, English description)
@@ -23,30 +23,53 @@ pub const HONORIFIC_SUFFIXES: &[(&str, &str, &str)] = &[
     ("様", "さま", "Very formal/respectful (Lord/Lady/Dear)"),
     ("さま", "さま", "Kana form of 様 — very formal/respectful"),
     ("氏", "し", "Formal written suffix (Mr./Ms.)"),
-    ("殿", "どの", "Formal/archaic (Lord, used in official documents)"),
+    (
+        "殿",
+        "どの",
+        "Formal/archaic (Lord, used in official documents)",
+    ),
     ("殿", "てん", "Alternate reading of 殿 (rare)"),
     ("御前", "おまえ", "Archaic respectful (Your Presence)"),
-    ("御前", "ごぜん", "Alternate reading of 御前 (Your Excellency)"),
+    (
+        "御前",
+        "ごぜん",
+        "Alternate reading of 御前 (Your Excellency)",
+    ),
     ("貴殿", "きでん", "Very formal written (Your Honor)"),
     ("閣下", "かっか", "Your Excellency (diplomatic/military)"),
     ("陛下", "へいか", "Your Majesty (royalty)"),
     ("殿下", "でんか", "Your Highness (royalty)"),
-    ("妃殿下", "ひでんか", "Her Royal Highness (princess consort)"),
+    (
+        "妃殿下",
+        "ひでんか",
+        "Her Royal Highness (princess consort)",
+    ),
     ("親王", "しんのう", "Prince of the Blood (Imperial family)"),
-    ("内親王", "ないしんのう", "Princess of the Blood (Imperial family)"),
+    (
+        "内親王",
+        "ないしんのう",
+        "Princess of the Blood (Imperial family)",
+    ),
     ("宮", "みや", "Prince/Princess (Imperial branch family)"),
     ("上", "うえ", "Archaic superior address (e.g. 父上)"),
     ("公", "こう", "Duke / Lord (nobility)"),
-    ("卿", "きょう", "Lord (archaic nobility, also used in fantasy)"),
+    (
+        "卿",
+        "きょう",
+        "Lord (archaic nobility, also used in fantasy)",
+    ),
     ("侯", "こう", "Marquis (nobility)"),
     ("伯", "はく", "Count/Earl (nobility)"),
     ("子", "し", "Viscount (nobility) / Master (classical)"),
     ("男", "だん", "Baron (nobility)"),
-
     // ===== Casual / Friendly =====
     ("君", "くん", "Familiar suffix (usually male, junior)"),
     ("くん", "くん", "Kana form of 君 — familiar (usually male)"),
-    ("ちゃん", "ちゃん", "Endearing suffix (children, close friends, girls)"),
+    (
+        "ちゃん",
+        "ちゃん",
+        "Endearing suffix (children, close friends, girls)",
+    ),
     ("たん", "たん", "Baby-talk version of ちゃん"),
     ("ちん", "ちん", "Cutesy/playful variant of ちゃん"),
     ("りん", "りん", "Cutesy suffix (internet/otaku culture)"),
@@ -60,13 +83,16 @@ pub const HONORIFIC_SUFFIXES: &[(&str, &str, &str)] = &[
     ("嬢", "じょう", "Young lady"),
     ("嬢ちゃん", "じょうちゃん", "Little miss"),
     ("お嬢", "おじょう", "Young lady (polite)"),
-    ("お嬢様", "おじょうさま", "Young lady (very polite/rich girl)"),
+    (
+        "お嬢様",
+        "おじょうさま",
+        "Young lady (very polite/rich girl)",
+    ),
     ("姫", "ひめ", "Princess (also used affectionately)"),
     ("姫様", "ひめさま", "Princess (formal)"),
     ("王子", "おうじ", "Prince"),
     ("王子様", "おうじさま", "Prince (formal/fairy-tale)"),
     ("王女", "おうじょ", "Princess (royal daughter)"),
-
     // ===== Academic / Educational =====
     ("先生", "せんせい", "Teacher/Doctor/Master"),
     ("先輩", "せんぱい", "Senior (school/work)"),
@@ -84,8 +110,11 @@ pub const HONORIFIC_SUFFIXES: &[(&str, &str, &str)] = &[
     ("校長", "こうちょう", "School principal"),
     ("学長", "がくちょう", "University president"),
     ("園長", "えんちょう", "Kindergarten/zoo director"),
-    ("生徒", "せいと", "Student (used as address in some contexts)"),
-
+    (
+        "生徒",
+        "せいと",
+        "Student (used as address in some contexts)",
+    ),
     // ===== Corporate / Business =====
     ("社長", "しゃちょう", "Company president/CEO"),
     ("副社長", "ふくしゃちょう", "Vice president"),
@@ -112,7 +141,6 @@ pub const HONORIFIC_SUFFIXES: &[(&str, &str, &str)] = &[
     ("理事", "りじ", "Board member/Trustee"),
     ("総裁", "そうさい", "Governor/President (of institution)"),
     ("代表", "だいひょう", "Representative"),
-
     // ===== Government / Political =====
     ("大臣", "だいじん", "Minister (government)"),
     ("総理", "そうり", "Prime Minister (short form)"),
@@ -130,7 +158,6 @@ pub const HONORIFIC_SUFFIXES: &[(&str, &str, &str)] = &[
     ("領事", "りょうじ", "Consul"),
     ("奉行", "ぶぎょう", "Magistrate (Edo period)"),
     ("代官", "だいかん", "Magistrate/Intendant (historical)"),
-
     // ===== Military / Law Enforcement =====
     ("大将", "たいしょう", "General/Admiral"),
     ("中将", "ちゅうじょう", "Lieutenant General"),
@@ -165,7 +192,6 @@ pub const HONORIFIC_SUFFIXES: &[(&str, &str, &str)] = &[
     ("長官", "ちょうかん", "Commissioner (police/agency)"),
     ("将軍", "しょうぐん", "Shogun / General (historical)"),
     ("大名", "だいみょう", "Feudal lord (historical)"),
-
     // ===== Religious / Spiritual =====
     ("神", "かみ", "God"),
     ("神様", "かみさま", "God (respectful)"),
@@ -190,7 +216,6 @@ pub const HONORIFIC_SUFFIXES: &[(&str, &str, &str)] = &[
     ("教皇", "きょうこう", "Pope"),
     ("法王", "ほうおう", "Pope (alternate) / Dharma King"),
     ("猊下", "げいか", "Your Holiness/Eminence"),
-
     // ===== Medical =====
     ("医師", "いし", "Doctor/Physician"),
     ("医者", "いしゃ", "Doctor (colloquial)"),
@@ -199,7 +224,6 @@ pub const HONORIFIC_SUFFIXES: &[(&str, &str, &str)] = &[
     ("歯科医", "しかい", "Dentist"),
     ("獣医", "じゅうい", "Veterinarian"),
     ("院長", "いんちょう", "Hospital director"),
-
     // ===== Martial Arts / Traditional =====
     ("師範", "しはん", "Master instructor"),
     ("範士", "はんし", "Grand master (martial arts)"),
@@ -211,9 +235,12 @@ pub const HONORIFIC_SUFFIXES: &[(&str, &str, &str)] = &[
     ("大関", "おおぜき", "Champion (sumo)"),
     ("関脇", "せきわけ", "Junior champion (sumo)"),
     ("小結", "こむすび", "Junior champion 2nd (sumo)"),
-    ("親方", "おやかた", "Stable master (sumo) / Boss (craftsman)"),
+    (
+        "親方",
+        "おやかた",
+        "Stable master (sumo) / Boss (craftsman)",
+    ),
     ("力士", "りきし", "Sumo wrestler"),
-
     // ===== Family / Kinship (used as honorific address) =====
     ("兄", "にい", "Older brother (short)"),
     ("兄さん", "にいさん", "Older brother"),
@@ -246,7 +273,6 @@ pub const HONORIFIC_SUFFIXES: &[(&str, &str, &str)] = &[
     ("奥さん", "おくさん", "Wife (polite)"),
     ("旦那", "だんな", "Husband / Master"),
     ("旦那様", "だんなさま", "Husband / Master (formal)"),
-
     // ===== Historical / Feudal =====
     ("御所", "ごしょ", "Imperial Palace / Emperor (by metonymy)"),
     ("関白", "かんぱく", "Imperial Regent"),
@@ -267,7 +293,6 @@ pub const HONORIFIC_SUFFIXES: &[(&str, &str, &str)] = &[
     ("若", "わか", "Young lord/master"),
     ("若様", "わかさま", "Young lord (formal)"),
     ("若殿", "わかとの", "Young lord"),
-
     // ===== Fantasy / Fictional (common in VN/anime) =====
     ("王", "おう", "King"),
     ("王様", "おうさま", "King (polite)"),
@@ -297,9 +322,12 @@ pub const HONORIFIC_SUFFIXES: &[(&str, &str, &str)] = &[
     ("主", "あるじ", "Master/Lord (alternate reading)"),
     ("主人", "しゅじん", "Master/Head of household"),
     ("ご主人", "ごしゅじん", "Master (polite)"),
-    ("ご主人様", "ごしゅじんさま", "Master (very polite, maid usage)"),
+    (
+        "ご主人様",
+        "ごしゅじんさま",
+        "Master (very polite, maid usage)",
+    ),
     ("お方", "おかた", "Person (respectful)"),
-
     // ===== Otaku / Internet / Modern Slang =====
     ("氏", "うじ", "Alternate reading of 氏 (internet)"),
     ("師", "し", "Master/Teacher (respectful, online)"),
@@ -412,10 +440,7 @@ pub fn alphabet_to_kana(input: &str) -> String {
 
     while i < chars.len() {
         // 1. Double consonant check: if chars[i] == chars[i+1] and both are consonants → っ
-        if i + 1 < chars.len()
-            && chars[i] == chars[i + 1]
-            && is_consonant(chars[i])
-        {
+        if i + 1 < chars.len() && chars[i] == chars[i + 1] && is_consonant(chars[i]) {
             result.push('っ');
             i += 1; // Skip one; the second consonant starts the next match
             continue;
@@ -468,8 +493,26 @@ pub fn alphabet_to_kana(input: &str) -> String {
 fn is_consonant(c: char) -> bool {
     matches!(
         c,
-        'b' | 'c' | 'd' | 'f' | 'g' | 'h' | 'j' | 'k' | 'l' | 'm' | 'n' | 'p' | 'q'
-            | 'r' | 's' | 't' | 'v' | 'w' | 'x' | 'y' | 'z'
+        'b' | 'c'
+            | 'd'
+            | 'f'
+            | 'g'
+            | 'h'
+            | 'j'
+            | 'k'
+            | 'l'
+            | 'm'
+            | 'n'
+            | 'p'
+            | 'q'
+            | 'r'
+            | 's'
+            | 't'
+            | 'v'
+            | 'w'
+            | 'x'
+            | 'y'
+            | 'z'
     )
 }
 
@@ -481,47 +524,147 @@ fn lookup_romaji(key: &str) -> Option<&'static str> {
     match key {
         // === 3-character sequences ===
         // Hepburn standard
-        "sha" => Some("しゃ"), "shi" => Some("し"),  "shu" => Some("しゅ"), "sho" => Some("しょ"), "she" => Some("しぇ"),
-        "chi" => Some("ち"),   "tsu" => Some("つ"),
-        "cha" => Some("ちゃ"), "chu" => Some("ちゅ"), "cho" => Some("ちょ"), "che" => Some("ちぇ"),
-        "nya" => Some("にゃ"), "nyu" => Some("にゅ"), "nyo" => Some("にょ"),
-        "hya" => Some("ひゃ"), "hyu" => Some("ひゅ"), "hyo" => Some("ひょ"),
-        "mya" => Some("みゃ"), "myu" => Some("みゅ"), "myo" => Some("みょ"),
-        "rya" => Some("りゃ"), "ryu" => Some("りゅ"), "ryo" => Some("りょ"),
-        "gya" => Some("ぎゃ"), "gyu" => Some("ぎゅ"), "gyo" => Some("ぎょ"),
-        "bya" => Some("びゃ"), "byu" => Some("びゅ"), "byo" => Some("びょ"),
-        "pya" => Some("ぴゃ"), "pyu" => Some("ぴゅ"), "pyo" => Some("ぴょ"),
-        "kya" => Some("きゃ"), "kyu" => Some("きゅ"), "kyo" => Some("きょ"),
-        "jya" => Some("じゃ"), "jyu" => Some("じゅ"), "jyo" => Some("じょ"),
+        "sha" => Some("しゃ"),
+        "shi" => Some("し"),
+        "shu" => Some("しゅ"),
+        "sho" => Some("しょ"),
+        "she" => Some("しぇ"),
+        "chi" => Some("ち"),
+        "tsu" => Some("つ"),
+        "cha" => Some("ちゃ"),
+        "chu" => Some("ちゅ"),
+        "cho" => Some("ちょ"),
+        "che" => Some("ちぇ"),
+        "nya" => Some("にゃ"),
+        "nyu" => Some("にゅ"),
+        "nyo" => Some("にょ"),
+        "hya" => Some("ひゃ"),
+        "hyu" => Some("ひゅ"),
+        "hyo" => Some("ひょ"),
+        "mya" => Some("みゃ"),
+        "myu" => Some("みゅ"),
+        "myo" => Some("みょ"),
+        "rya" => Some("りゃ"),
+        "ryu" => Some("りゅ"),
+        "ryo" => Some("りょ"),
+        "gya" => Some("ぎゃ"),
+        "gyu" => Some("ぎゅ"),
+        "gyo" => Some("ぎょ"),
+        "bya" => Some("びゃ"),
+        "byu" => Some("びゅ"),
+        "byo" => Some("びょ"),
+        "pya" => Some("ぴゃ"),
+        "pyu" => Some("ぴゅ"),
+        "pyo" => Some("ぴょ"),
+        "kya" => Some("きゃ"),
+        "kyu" => Some("きゅ"),
+        "kyo" => Some("きょ"),
+        "jya" => Some("じゃ"),
+        "jyu" => Some("じゅ"),
+        "jyo" => Some("じょ"),
         // Nihon-shiki / Kunrei-shiki variants (VNDB romanizations aren't always pure Hepburn)
-        "tya" => Some("ちゃ"), "tyu" => Some("ちゅ"), "tyo" => Some("ちょ"),
-        "sya" => Some("しゃ"), "syu" => Some("しゅ"), "syo" => Some("しょ"),
-        "zya" => Some("じゃ"), "zyu" => Some("じゅ"), "zyo" => Some("じょ"),
-        "dya" => Some("ぢゃ"), "dyu" => Some("ぢゅ"), "dyo" => Some("ぢょ"),
+        "tya" => Some("ちゃ"),
+        "tyu" => Some("ちゅ"),
+        "tyo" => Some("ちょ"),
+        "sya" => Some("しゃ"),
+        "syu" => Some("しゅ"),
+        "syo" => Some("しょ"),
+        "zya" => Some("じゃ"),
+        "zyu" => Some("じゅ"),
+        "zyo" => Some("じょ"),
+        "dya" => Some("ぢゃ"),
+        "dyu" => Some("ぢゅ"),
+        "dyo" => Some("ぢょ"),
         // Foreign-sound kana (common in character names from loanwords)
-        "tsa" => Some("つぁ"), "tsi" => Some("つぃ"), "tse" => Some("つぇ"), "tso" => Some("つぉ"),
+        "tsa" => Some("つぁ"),
+        "tsi" => Some("つぃ"),
+        "tse" => Some("つぇ"),
+        "tso" => Some("つぉ"),
 
         // === 2-character sequences ===
-        "ka" => Some("か"), "ki" => Some("き"), "ku" => Some("く"), "ke" => Some("け"), "ko" => Some("こ"),
-        "sa" => Some("さ"), "si" => Some("し"), "su" => Some("す"), "se" => Some("せ"), "so" => Some("そ"),
-        "ta" => Some("た"), "ti" => Some("ち"), "tu" => Some("つ"), "te" => Some("て"), "to" => Some("と"),
-        "na" => Some("な"), "ni" => Some("に"), "nu" => Some("ぬ"), "ne" => Some("ね"), "no" => Some("の"),
-        "ha" => Some("は"), "hi" => Some("ひ"), "hu" => Some("ふ"), "fu" => Some("ふ"), "he" => Some("へ"), "ho" => Some("ほ"),
-        "fa" => Some("ふぁ"), "fi" => Some("ふぃ"), "fe" => Some("ふぇ"), "fo" => Some("ふぉ"),
+        "ka" => Some("か"),
+        "ki" => Some("き"),
+        "ku" => Some("く"),
+        "ke" => Some("け"),
+        "ko" => Some("こ"),
+        "sa" => Some("さ"),
+        "si" => Some("し"),
+        "su" => Some("す"),
+        "se" => Some("せ"),
+        "so" => Some("そ"),
+        "ta" => Some("た"),
+        "ti" => Some("ち"),
+        "tu" => Some("つ"),
+        "te" => Some("て"),
+        "to" => Some("と"),
+        "na" => Some("な"),
+        "ni" => Some("に"),
+        "nu" => Some("ぬ"),
+        "ne" => Some("ね"),
+        "no" => Some("の"),
+        "ha" => Some("は"),
+        "hi" => Some("ひ"),
+        "hu" => Some("ふ"),
+        "fu" => Some("ふ"),
+        "he" => Some("へ"),
+        "ho" => Some("ほ"),
+        "fa" => Some("ふぁ"),
+        "fi" => Some("ふぃ"),
+        "fe" => Some("ふぇ"),
+        "fo" => Some("ふぉ"),
         "je" => Some("じぇ"),
-        "ma" => Some("ま"), "mi" => Some("み"), "mu" => Some("む"), "me" => Some("め"), "mo" => Some("も"),
-        "ra" => Some("ら"), "ri" => Some("り"), "ru" => Some("る"), "re" => Some("れ"), "ro" => Some("ろ"),
-        "ya" => Some("や"), "yu" => Some("ゆ"), "yo" => Some("よ"),
-        "wa" => Some("わ"), "wi" => Some("ゐ"), "we" => Some("ゑ"), "wo" => Some("を"),
-        "ga" => Some("が"), "gi" => Some("ぎ"), "gu" => Some("ぐ"), "ge" => Some("げ"), "go" => Some("ご"),
-        "za" => Some("ざ"), "zi" => Some("じ"), "zu" => Some("ず"), "ze" => Some("ぜ"), "zo" => Some("ぞ"),
-        "da" => Some("だ"), "di" => Some("ぢ"), "du" => Some("づ"), "de" => Some("で"), "do" => Some("ど"),
-        "ba" => Some("ば"), "bi" => Some("び"), "bu" => Some("ぶ"), "be" => Some("べ"), "bo" => Some("ぼ"),
-        "pa" => Some("ぱ"), "pi" => Some("ぴ"), "pu" => Some("ぷ"), "pe" => Some("ぺ"), "po" => Some("ぽ"),
-        "ja" => Some("じゃ"), "ju" => Some("じゅ"), "jo" => Some("じょ"),
+        "ma" => Some("ま"),
+        "mi" => Some("み"),
+        "mu" => Some("む"),
+        "me" => Some("め"),
+        "mo" => Some("も"),
+        "ra" => Some("ら"),
+        "ri" => Some("り"),
+        "ru" => Some("る"),
+        "re" => Some("れ"),
+        "ro" => Some("ろ"),
+        "ya" => Some("や"),
+        "yu" => Some("ゆ"),
+        "yo" => Some("よ"),
+        "wa" => Some("わ"),
+        "wi" => Some("ゐ"),
+        "we" => Some("ゑ"),
+        "wo" => Some("を"),
+        "ga" => Some("が"),
+        "gi" => Some("ぎ"),
+        "gu" => Some("ぐ"),
+        "ge" => Some("げ"),
+        "go" => Some("ご"),
+        "za" => Some("ざ"),
+        "zi" => Some("じ"),
+        "zu" => Some("ず"),
+        "ze" => Some("ぜ"),
+        "zo" => Some("ぞ"),
+        "da" => Some("だ"),
+        "di" => Some("ぢ"),
+        "du" => Some("づ"),
+        "de" => Some("で"),
+        "do" => Some("ど"),
+        "ba" => Some("ば"),
+        "bi" => Some("び"),
+        "bu" => Some("ぶ"),
+        "be" => Some("べ"),
+        "bo" => Some("ぼ"),
+        "pa" => Some("ぱ"),
+        "pi" => Some("ぴ"),
+        "pu" => Some("ぷ"),
+        "pe" => Some("ぺ"),
+        "po" => Some("ぽ"),
+        "ja" => Some("じゃ"),
+        "ju" => Some("じゅ"),
+        "jo" => Some("じょ"),
 
         // === 1-character sequences (vowels only; 'n' handled separately) ===
-        "a" => Some("あ"), "i" => Some("い"), "u" => Some("う"), "e" => Some("え"), "o" => Some("お"),
+        "a" => Some("あ"),
+        "i" => Some("い"),
+        "u" => Some("う"),
+        "e" => Some("え"),
+        "o" => Some("お"),
 
         _ => None,
     }
@@ -536,10 +679,7 @@ fn lookup_romaji(key: &str) -> Option<&'static str> {
 /// IMPORTANT: Romanized names from VNDB are Western order ("Given Family").
 /// Japanese names are Japanese order ("Family Given").
 /// romanized_parts[0] maps to Japanese family; romanized_parts[1] maps to Japanese given.
-pub fn generate_mixed_name_readings(
-    name_original: &str,
-    romanized_name: &str,
-) -> NameReadings {
+pub fn generate_mixed_name_readings(name_original: &str, romanized_name: &str) -> NameReadings {
     // Handle empty names
     if name_original.is_empty() {
         return NameReadings {
@@ -580,8 +720,8 @@ pub fn generate_mixed_name_readings(
 
     // Split romanized name (Western order: first_word second_word)
     let rom_parts: Vec<&str> = romanized_name.splitn(2, ' ').collect();
-    let rom_first = rom_parts.first().copied().unwrap_or("");   // romanized_parts[0]
-    let rom_second = rom_parts.get(1).copied().unwrap_or("");   // romanized_parts[1]
+    let rom_first = rom_parts.first().copied().unwrap_or(""); // romanized_parts[0]
+    let rom_second = rom_parts.get(1).copied().unwrap_or(""); // romanized_parts[1]
 
     // Family reading: if kanji, use rom_first (romanized_parts[0]) via alphabet_to_kana
     //                 if kana, use Japanese family text via kata_to_hira
@@ -927,7 +1067,10 @@ mod tests {
     fn test_split_japanese_name_middle_dot() {
         // Names like ルルーシュ・ランペルージ use ・ not space
         let parts = split_japanese_name("ルルーシュ・ランペルージ");
-        assert!(!parts.has_space, "Middle dot should not be treated as space");
+        assert!(
+            !parts.has_space,
+            "Middle dot should not be treated as space"
+        );
         assert_eq!(parts.combined, "ルルーシュ・ランペルージ");
     }
 

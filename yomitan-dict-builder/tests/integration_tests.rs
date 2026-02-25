@@ -40,7 +40,10 @@ async fn test_user_lists_no_username() {
     if let Ok(response) = result {
         assert_eq!(response.status(), 400);
         let body: serde_json::Value = response.json().await.unwrap();
-        assert!(body["error"].as_str().unwrap().contains("At least one username"));
+        assert!(body["error"]
+            .as_str()
+            .unwrap()
+            .contains("At least one username"));
     }
 }
 

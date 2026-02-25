@@ -401,7 +401,11 @@ async fn cleanup_expired(dir: &std::path::Path) {
     }
 
     if removed > 0 {
-        info!(removed = removed, kept = kept, "Disk cache cleanup complete");
+        info!(
+            removed = removed,
+            kept = kept,
+            "Disk cache cleanup complete"
+        );
     }
 }
 
@@ -568,7 +572,10 @@ mod tests {
         let cache = DiskImageCache::new(dir.clone()).await;
 
         // Get on a URL that was never put
-        assert!(cache.get("https://never-stored.com/img.jpg").await.is_none());
+        assert!(cache
+            .get("https://never-stored.com/img.jpg")
+            .await
+            .is_none());
 
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }

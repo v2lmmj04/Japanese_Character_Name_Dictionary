@@ -31,7 +31,12 @@ pub struct DictBuilder {
 }
 
 impl DictBuilder {
-    pub fn new(spoiler_level: u8, download_url: Option<String>, game_title: String, honorifics: bool) -> Self {
+    pub fn new(
+        spoiler_level: u8,
+        download_url: Option<String>,
+        game_title: String,
+        honorifics: bool,
+    ) -> Self {
         // Random 12-digit revision string
         let revision: u64 = rand::random::<u64>() % 1_000_000_000_000;
         Self {
@@ -158,26 +163,42 @@ impl DictBuilder {
             let hira_combined = format!("{}{}", readings.family, readings.given);
             if !hira_combined.is_empty() && added_terms.insert(hira_combined.clone()) {
                 self.entries.push(ContentBuilder::create_term_entry(
-                    &hira_combined, &readings.full, role, score, &structured_content,
+                    &hira_combined,
+                    &readings.full,
+                    role,
+                    score,
+                    &structured_content,
                 ));
             }
             // Hiragana with space: "すずき しんいち"
             let hira_spaced = format!("{} {}", readings.family, readings.given);
             if added_terms.insert(hira_spaced.clone()) {
                 self.entries.push(ContentBuilder::create_term_entry(
-                    &hira_spaced, &readings.full, role, score, &structured_content,
+                    &hira_spaced,
+                    &readings.full,
+                    role,
+                    score,
+                    &structured_content,
                 ));
             }
             // Hiragana family only
             if !readings.family.is_empty() && added_terms.insert(readings.family.clone()) {
                 self.entries.push(ContentBuilder::create_term_entry(
-                    &readings.family, &readings.family, role, score, &structured_content,
+                    &readings.family,
+                    &readings.family,
+                    role,
+                    score,
+                    &structured_content,
                 ));
             }
             // Hiragana given only
             if !readings.given.is_empty() && added_terms.insert(readings.given.clone()) {
                 self.entries.push(ContentBuilder::create_term_entry(
-                    &readings.given, &readings.given, role, score, &structured_content,
+                    &readings.given,
+                    &readings.given,
+                    role,
+                    score,
+                    &structured_content,
                 ));
             }
 
@@ -187,36 +208,60 @@ impl DictBuilder {
             let kata_combined = format!("{}{}", kata_family, kata_given);
             if !kata_combined.is_empty() && added_terms.insert(kata_combined.clone()) {
                 self.entries.push(ContentBuilder::create_term_entry(
-                    &kata_combined, &readings.full, role, score, &structured_content,
+                    &kata_combined,
+                    &readings.full,
+                    role,
+                    score,
+                    &structured_content,
                 ));
             }
             let kata_spaced = format!("{} {}", kata_family, kata_given);
             if added_terms.insert(kata_spaced.clone()) {
                 self.entries.push(ContentBuilder::create_term_entry(
-                    &kata_spaced, &readings.full, role, score, &structured_content,
+                    &kata_spaced,
+                    &readings.full,
+                    role,
+                    score,
+                    &structured_content,
                 ));
             }
             if !kata_family.is_empty() && added_terms.insert(kata_family.clone()) {
                 self.entries.push(ContentBuilder::create_term_entry(
-                    &kata_family, &readings.family, role, score, &structured_content,
+                    &kata_family,
+                    &readings.family,
+                    role,
+                    score,
+                    &structured_content,
                 ));
             }
             if !kata_given.is_empty() && added_terms.insert(kata_given.clone()) {
                 self.entries.push(ContentBuilder::create_term_entry(
-                    &kata_given, &readings.given, role, score, &structured_content,
+                    &kata_given,
+                    &readings.given,
+                    role,
+                    score,
+                    &structured_content,
                 ));
             }
         } else {
             // Single-word name: add hiragana and katakana forms
             if !readings.full.is_empty() && added_terms.insert(readings.full.clone()) {
                 self.entries.push(ContentBuilder::create_term_entry(
-                    &readings.full, &readings.full, role, score, &structured_content,
+                    &readings.full,
+                    &readings.full,
+                    role,
+                    score,
+                    &structured_content,
                 ));
             }
             let kata_full = name_parser::hira_to_kata(&readings.full);
             if !kata_full.is_empty() && added_terms.insert(kata_full.clone()) {
                 self.entries.push(ContentBuilder::create_term_entry(
-                    &kata_full, &readings.full, role, score, &structured_content,
+                    &kata_full,
+                    &readings.full,
+                    role,
+                    score,
+                    &structured_content,
                 ));
             }
         }
@@ -229,67 +274,54 @@ impl DictBuilder {
             // Original kanji forms
             if let Some(ref family) = name_parts.family {
                 if !family.is_empty() {
-                    base_names_with_readings
-                        .push((family.clone(), readings.family.clone()));
+                    base_names_with_readings.push((family.clone(), readings.family.clone()));
                 }
             }
             if let Some(ref given) = name_parts.given {
                 if !given.is_empty() {
-                    base_names_with_readings
-                        .push((given.clone(), readings.given.clone()));
+                    base_names_with_readings.push((given.clone(), readings.given.clone()));
                 }
             }
             if !name_parts.combined.is_empty() {
-                base_names_with_readings
-                    .push((name_parts.combined.clone(), readings.full.clone()));
+                base_names_with_readings.push((name_parts.combined.clone(), readings.full.clone()));
             }
             if !name_parts.original.is_empty() {
-                base_names_with_readings
-                    .push((name_parts.original.clone(), readings.full.clone()));
+                base_names_with_readings.push((name_parts.original.clone(), readings.full.clone()));
             }
             // Hiragana forms (family, given, combined)
             if !readings.family.is_empty() {
-                base_names_with_readings
-                    .push((readings.family.clone(), readings.family.clone()));
+                base_names_with_readings.push((readings.family.clone(), readings.family.clone()));
             }
             if !readings.given.is_empty() {
-                base_names_with_readings
-                    .push((readings.given.clone(), readings.given.clone()));
+                base_names_with_readings.push((readings.given.clone(), readings.given.clone()));
             }
             let hira_combined = format!("{}{}", readings.family, readings.given);
             if !hira_combined.is_empty() {
-                base_names_with_readings
-                    .push((hira_combined, readings.full.clone()));
+                base_names_with_readings.push((hira_combined, readings.full.clone()));
             }
             // Katakana forms (family, given, combined)
             let kata_family = name_parser::hira_to_kata(&readings.family);
             let kata_given = name_parser::hira_to_kata(&readings.given);
             if !kata_family.is_empty() {
-                base_names_with_readings
-                    .push((kata_family.clone(), readings.family.clone()));
+                base_names_with_readings.push((kata_family.clone(), readings.family.clone()));
             }
             if !kata_given.is_empty() {
-                base_names_with_readings
-                    .push((kata_given.clone(), readings.given.clone()));
+                base_names_with_readings.push((kata_given.clone(), readings.given.clone()));
             }
             let kata_combined = format!("{}{}", kata_family, kata_given);
             if !kata_combined.is_empty() {
-                base_names_with_readings
-                    .push((kata_combined, readings.full.clone()));
+                base_names_with_readings.push((kata_combined, readings.full.clone()));
             }
         } else if !name_original.is_empty() {
-            base_names_with_readings
-                .push((name_original.clone(), readings.full.clone()));
+            base_names_with_readings.push((name_original.clone(), readings.full.clone()));
             // Hiragana form
             if !readings.full.is_empty() {
-                base_names_with_readings
-                    .push((readings.full.clone(), readings.full.clone()));
+                base_names_with_readings.push((readings.full.clone(), readings.full.clone()));
             }
             // Katakana form
             let kata_full = name_parser::hira_to_kata(&readings.full);
             if !kata_full.is_empty() {
-                base_names_with_readings
-                    .push((kata_full, readings.full.clone()));
+                base_names_with_readings.push((kata_full, readings.full.clone()));
             }
         }
 
@@ -446,7 +478,8 @@ impl DictBuilder {
                 .map_err(|e| format!("Failed to write img/{}: {}", filename, e))?;
         }
 
-        let cursor = zip.finish()
+        let cursor = zip
+            .finish()
             .map_err(|e| format!("Failed to finalize ZIP: {}", e))?;
         Ok(cursor.into_inner())
     }
@@ -459,12 +492,7 @@ mod tests {
     use std::collections::HashSet;
     use std::io::Read;
 
-    fn make_test_character(
-        id: &str,
-        name: &str,
-        name_original: &str,
-        role: &str,
-    ) -> Character {
+    fn make_test_character(id: &str, name: &str, name_original: &str, role: &str) -> Character {
         Character {
             id: id.to_string(),
             name: name.to_string(),
@@ -510,7 +538,11 @@ mod tests {
         let mut builder = DictBuilder::new(0, None, "Test".to_string(), true);
         let char = make_test_character("c1", "Name", "", "main");
         builder.add_character(&char, "Test Game");
-        assert_eq!(builder.entries.len(), 0, "Empty name_original should produce no entries");
+        assert_eq!(
+            builder.entries.len(),
+            0,
+            "Empty name_original should produce no entries"
+        );
     }
 
     #[test]
@@ -538,10 +570,22 @@ mod tests {
             .collect();
 
         // Should have: original with space, combined, family, given
-        assert!(terms.contains(&"須々木 心一".to_string()), "Should have original with space");
-        assert!(terms.contains(&"須々木心一".to_string()), "Should have combined");
-        assert!(terms.contains(&"須々木".to_string()), "Should have family name");
-        assert!(terms.contains(&"心一".to_string()), "Should have given name");
+        assert!(
+            terms.contains(&"須々木 心一".to_string()),
+            "Should have original with space"
+        );
+        assert!(
+            terms.contains(&"須々木心一".to_string()),
+            "Should have combined"
+        );
+        assert!(
+            terms.contains(&"須々木".to_string()),
+            "Should have family name"
+        );
+        assert!(
+            terms.contains(&"心一".to_string()),
+            "Should have given name"
+        );
     }
 
     #[test]
@@ -675,7 +719,10 @@ mod tests {
         assert_eq!(index["author"], "Bee (https://github.com/bee-san)");
         assert!(index["description"].as_str().unwrap().contains("Test Game"));
         assert!(index["downloadUrl"].as_str().is_some());
-        assert!(index["indexUrl"].as_str().unwrap().contains("/api/yomitan-index"));
+        assert!(index["indexUrl"]
+            .as_str()
+            .unwrap()
+            .contains("/api/yomitan-index"));
         assert_eq!(index["isUpdatable"], true);
     }
 
@@ -783,7 +830,10 @@ mod tests {
         builder.add_character(&char2, "Game B");
 
         // Both characters should have entries
-        assert!(builder.entries.len() > 2, "Should have entries from both characters");
+        assert!(
+            builder.entries.len() > 2,
+            "Should have entries from both characters"
+        );
 
         // Verify different game titles in structured content
         let entry1_content = &builder.entries[0][5][0];
@@ -814,7 +864,9 @@ mod tests {
         archive: &mut zip::ZipArchive<std::io::Cursor<Vec<u8>>>,
         name: &str,
     ) -> String {
-        let mut file = archive.by_name(name).unwrap_or_else(|_| panic!("ZIP missing {}", name));
+        let mut file = archive
+            .by_name(name)
+            .unwrap_or_else(|_| panic!("ZIP missing {}", name));
         let mut buf = String::new();
         file.read_to_string(&mut buf).unwrap();
         buf
@@ -844,8 +896,14 @@ mod tests {
             description: Some("A brilliant detective.".to_string()),
             aliases: vec!["シンイチ".to_string()],
             personality: vec![
-                CharacterTrait { name: "Clever".to_string(), spoiler: 0 },
-                CharacterTrait { name: "Secret identity".to_string(), spoiler: 2 },
+                CharacterTrait {
+                    name: "Clever".to_string(),
+                    spoiler: 0,
+                },
+                CharacterTrait {
+                    name: "Secret identity".to_string(),
+                    spoiler: 2,
+                },
             ],
             roles: vec![],
             engages_in: vec![],
@@ -875,7 +933,10 @@ mod tests {
         assert!(index["revision"].is_string(), "revision must be a string");
         assert_eq!(index["format"].as_i64().unwrap(), 3, "format must be 3");
         assert!(index["author"].is_string(), "author must be a string");
-        assert!(index["description"].is_string(), "description must be a string");
+        assert!(
+            index["description"].is_string(),
+            "description must be a string"
+        );
     }
 
     #[test]
@@ -889,7 +950,10 @@ mod tests {
         // Auto-update fields
         assert_eq!(index["downloadUrl"].as_str().unwrap(), url);
         assert!(
-            index["indexUrl"].as_str().unwrap().contains("/api/yomitan-index"),
+            index["indexUrl"]
+                .as_str()
+                .unwrap()
+                .contains("/api/yomitan-index"),
             "indexUrl must point to the index endpoint"
         );
         assert_eq!(index["isUpdatable"].as_bool().unwrap(), true);
@@ -918,7 +982,10 @@ mod tests {
         let b1 = DictBuilder::new(0, None, "T".to_string(), true);
         let b2 = DictBuilder::new(0, None, "T".to_string(), true);
         // Revisions should differ (random). Extremely unlikely to collide.
-        assert_ne!(b1.revision, b2.revision, "Each build must have a unique revision");
+        assert_ne!(
+            b1.revision, b2.revision,
+            "Each build must have a unique revision"
+        );
     }
 
     // --- tag_bank validation ---
@@ -935,7 +1002,11 @@ mod tests {
 
         for tag in arr {
             let tag_arr = tag.as_array().expect("each tag must be an array");
-            assert_eq!(tag_arr.len(), 5, "each tag must have 5 fields: [name, category, sortOrder, notes, score]");
+            assert_eq!(
+                tag_arr.len(),
+                5,
+                "each tag must have 5 fields: [name, category, sortOrder, notes, score]"
+            );
             assert!(tag_arr[0].is_string(), "tag name must be string");
             assert!(tag_arr[1].is_string(), "tag category must be string");
             assert!(tag_arr[2].is_number(), "tag sortOrder must be number");
@@ -977,7 +1048,9 @@ mod tests {
 
         // Validate every entry matches Yomitan's expected schema
         for (i, entry) in builder.entries.iter().enumerate() {
-            let arr = entry.as_array().unwrap_or_else(|| panic!("entry {} must be array", i));
+            let arr = entry
+                .as_array()
+                .unwrap_or_else(|| panic!("entry {} must be array", i));
             assert_eq!(arr.len(), 8, "entry {} must have 8 fields", i);
 
             // [0] term: string
@@ -985,25 +1058,54 @@ mod tests {
             // [1] reading: string
             assert!(arr[1].is_string(), "entry {}[1] reading must be string", i);
             // [2] definitionTags: string
-            assert!(arr[2].is_string(), "entry {}[2] definitionTags must be string", i);
+            assert!(
+                arr[2].is_string(),
+                "entry {}[2] definitionTags must be string",
+                i
+            );
             // [3] rules: string (always "")
-            assert_eq!(arr[3].as_str().unwrap(), "", "entry {}[3] rules must be empty string", i);
+            assert_eq!(
+                arr[3].as_str().unwrap(),
+                "",
+                "entry {}[3] rules must be empty string",
+                i
+            );
             // [4] score: integer
             assert!(arr[4].is_number(), "entry {}[4] score must be number", i);
             // [5] definitions: array with structured-content objects
-            let defs = arr[5].as_array().unwrap_or_else(|| panic!("entry {}[5] must be array", i));
-            assert!(!defs.is_empty(), "entry {}[5] definitions must not be empty", i);
+            let defs = arr[5]
+                .as_array()
+                .unwrap_or_else(|| panic!("entry {}[5] must be array", i));
+            assert!(
+                !defs.is_empty(),
+                "entry {}[5] definitions must not be empty",
+                i
+            );
             assert_eq!(
                 defs[0]["type"].as_str().unwrap(),
                 "structured-content",
                 "entry {}[5][0] must be structured-content",
                 i
             );
-            assert!(defs[0].get("content").is_some(), "entry {}[5][0] must have content", i);
+            assert!(
+                defs[0].get("content").is_some(),
+                "entry {}[5][0] must have content",
+                i
+            );
             // [6] sequence: integer (always 0)
-            assert_eq!(arr[6].as_i64().unwrap(), 0, "entry {}[6] sequence must be 0", i);
+            assert_eq!(
+                arr[6].as_i64().unwrap(),
+                0,
+                "entry {}[6] sequence must be 0",
+                i
+            );
             // [7] termTags: string (always "")
-            assert_eq!(arr[7].as_str().unwrap(), "", "entry {}[7] termTags must be empty string", i);
+            assert_eq!(
+                arr[7].as_str().unwrap(),
+                "",
+                "entry {}[7] termTags must be empty string",
+                i
+            );
         }
     }
 
@@ -1022,7 +1124,10 @@ mod tests {
                 tags_str
             );
             let parts: Vec<&str> = tags_str.split_whitespace().collect();
-            assert!(parts.len() >= 2, "definitionTags must have at least 'name' + role");
+            assert!(
+                parts.len() >= 2,
+                "definitionTags must have at least 'name' + role"
+            );
         }
     }
 
@@ -1030,7 +1135,12 @@ mod tests {
     fn test_yomitan_term_entry_scores_match_roles() {
         let mut builder = DictBuilder::new(0, None, "Test".to_string(), true);
 
-        let roles_scores = [("main", 100), ("primary", 75), ("side", 50), ("appears", 25)];
+        let roles_scores = [
+            ("main", 100),
+            ("primary", 75),
+            ("side", 50),
+            ("appears", 25),
+        ];
         for (role, expected_score) in &roles_scores {
             let ch = make_test_character("c1", "Test", "テスト", role);
             builder.entries.clear();
@@ -1059,10 +1169,18 @@ mod tests {
         let mut archive = build_zip_archive(&builder);
         let names = zip_filenames(&mut archive);
 
-        assert!(names.contains(&"index.json".to_string()), "ZIP must contain index.json");
-        assert!(names.contains(&"tag_bank_1.json".to_string()), "ZIP must contain tag_bank_1.json");
         assert!(
-            names.iter().any(|n| n.starts_with("term_bank_") && n.ends_with(".json")),
+            names.contains(&"index.json".to_string()),
+            "ZIP must contain index.json"
+        );
+        assert!(
+            names.contains(&"tag_bank_1.json".to_string()),
+            "ZIP must contain tag_bank_1.json"
+        );
+        assert!(
+            names
+                .iter()
+                .any(|n| n.starts_with("term_bank_") && n.ends_with(".json")),
             "ZIP must contain at least one term_bank_N.json"
         );
     }
@@ -1222,15 +1340,23 @@ mod tests {
 
         // Step 2: Parse index.json
         let index_raw = read_zip_entry(&mut archive, "index.json");
-        let index: serde_json::Value = serde_json::from_str(&index_raw).expect("index.json must be valid JSON");
+        let index: serde_json::Value =
+            serde_json::from_str(&index_raw).expect("index.json must be valid JSON");
         assert_eq!(index["format"].as_i64().unwrap(), 3);
         assert!(!index["revision"].as_str().unwrap().is_empty());
-        assert!(index["description"].as_str().unwrap().contains("Steins;Gate"));
+        assert!(index["description"]
+            .as_str()
+            .unwrap()
+            .contains("Steins;Gate"));
 
         // Step 3: Parse tag_bank
         let tags_raw = read_zip_entry(&mut archive, "tag_bank_1.json");
-        let tags: Vec<serde_json::Value> = serde_json::from_str(&tags_raw).expect("tag_bank must be valid JSON array");
-        let tag_names: HashSet<String> = tags.iter().map(|t| t[0].as_str().unwrap().to_string()).collect();
+        let tags: Vec<serde_json::Value> =
+            serde_json::from_str(&tags_raw).expect("tag_bank must be valid JSON array");
+        let tag_names: HashSet<String> = tags
+            .iter()
+            .map(|t| t[0].as_str().unwrap().to_string())
+            .collect();
 
         // Step 4: Parse all term banks and validate entries
         let names = zip_filenames(&mut archive);
@@ -1268,11 +1394,26 @@ mod tests {
         assert!(total_entries > 0, "Dictionary must have at least one entry");
 
         // Verify expected base terms are present
-        assert!(all_terms.contains(&"須々木 心一".to_string()), "Must have full name with space");
-        assert!(all_terms.contains(&"須々木心一".to_string()), "Must have combined name");
-        assert!(all_terms.contains(&"須々木".to_string()), "Must have family name");
-        assert!(all_terms.contains(&"心一".to_string()), "Must have given name");
-        assert!(all_terms.contains(&"シンイチ".to_string()), "Must have alias entry");
+        assert!(
+            all_terms.contains(&"須々木 心一".to_string()),
+            "Must have full name with space"
+        );
+        assert!(
+            all_terms.contains(&"須々木心一".to_string()),
+            "Must have combined name"
+        );
+        assert!(
+            all_terms.contains(&"須々木".to_string()),
+            "Must have family name"
+        );
+        assert!(
+            all_terms.contains(&"心一".to_string()),
+            "Must have given name"
+        );
+        assert!(
+            all_terms.contains(&"シンイチ".to_string()),
+            "Must have alias entry"
+        );
 
         // Verify honorific variants exist
         assert!(
@@ -1286,7 +1427,9 @@ mod tests {
 
         // Verify image is in the ZIP
         assert!(
-            names.iter().any(|n| n.starts_with("img/") && n.contains("c42")),
+            names
+                .iter()
+                .any(|n| n.starts_with("img/") && n.contains("c42")),
             "ZIP must contain the character's image"
         );
     }
@@ -1337,7 +1480,11 @@ mod tests {
         let ch = make_test_character("c1", "John Smith", "", "main");
         builder.add_character(&ch, "Test");
 
-        assert_eq!(builder.entries.len(), 0, "Characters without Japanese names must produce no entries");
+        assert_eq!(
+            builder.entries.len(),
+            0,
+            "Characters without Japanese names must produce no entries"
+        );
 
         // ZIP should still be valid
         let mut archive = build_zip_archive(&builder);
@@ -1358,7 +1505,10 @@ mod tests {
 
         // Find the base name entry in each
         let find_base = |entries: &[serde_json::Value]| -> String {
-            let entry = entries.iter().find(|e| e[0].as_str().unwrap() == "須々木 心一").unwrap();
+            let entry = entries
+                .iter()
+                .find(|e| e[0].as_str().unwrap() == "須々木 心一")
+                .unwrap();
             serde_json::to_string(&entry[5]).unwrap()
         };
 
@@ -1381,14 +1531,19 @@ mod tests {
         let ch = make_test_character("c1", "Saber", "セイバー", "main");
         builder.add_character(&ch, "Test");
 
-        let terms: Vec<String> = builder.entries.iter()
+        let terms: Vec<String> = builder
+            .entries
+            .iter()
             .map(|e| e[0].as_str().unwrap().to_string())
             .collect();
 
         // Single-word name should not produce separate family/given entries
         assert!(terms.contains(&"セイバー".to_string()));
         // Should still have honorific variants
-        assert!(terms.iter().any(|t| t == "セイバーさん"), "Single name should get honorifics");
+        assert!(
+            terms.iter().any(|t| t == "セイバーさん"),
+            "Single name should get honorifics"
+        );
     }
 
     #[test]
@@ -1485,7 +1640,10 @@ mod tests {
 
         // "せいばー" should appear only once (either from kana generation or alias, not both)
         let count = terms.iter().filter(|t| t.as_str() == "せいばー").count();
-        assert_eq!(count, 1, "Alias matching kana reading should be deduplicated");
+        assert_eq!(
+            count, 1,
+            "Alias matching kana reading should be deduplicated"
+        );
     }
 
     // === Edge case: two characters with same name ===
@@ -1519,7 +1677,12 @@ mod tests {
     fn test_empty_aliases_skipped() {
         let mut builder = DictBuilder::new(0, None, "Test".to_string(), false);
         let mut char = make_test_character("c1", "Name", "名前", "main");
-        char.aliases = vec!["".to_string(), "".to_string(), "Valid".to_string(), "".to_string()];
+        char.aliases = vec![
+            "".to_string(),
+            "".to_string(),
+            "Valid".to_string(),
+            "".to_string(),
+        ];
         builder.add_character(&char, "Test");
 
         let terms: Vec<String> = builder
@@ -1528,7 +1691,10 @@ mod tests {
             .filter_map(|e| e[0].as_str().map(|s| s.to_string()))
             .collect();
 
-        assert!(terms.contains(&"Valid".to_string()), "Non-empty alias should be present");
+        assert!(
+            terms.contains(&"Valid".to_string()),
+            "Non-empty alias should be present"
+        );
         // Empty aliases should not produce entries
         let empty_count = terms.iter().filter(|t| t.is_empty()).count();
         assert_eq!(empty_count, 0, "Empty aliases should not produce entries");
@@ -1573,7 +1739,10 @@ mod tests {
     fn test_index_url_replacement() {
         let builder = DictBuilder::new(
             0,
-            Some("http://localhost:3000/api/yomitan-dict?source=vndb&id=v17&spoiler_level=0".to_string()),
+            Some(
+                "http://localhost:3000/api/yomitan-dict?source=vndb&id=v17&spoiler_level=0"
+                    .to_string(),
+            ),
             "Test".to_string(),
             true,
         );

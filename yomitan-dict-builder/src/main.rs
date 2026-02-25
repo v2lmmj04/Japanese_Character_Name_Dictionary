@@ -16,8 +16,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_stream::wrappers::ReceiverStream;
+use tower_governor::{
+    governor::GovernorConfigBuilder, key_extractor::SmartIpKeyExtractor, GovernorLayer,
+};
 use tower_http::services::ServeDir;
-use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer, key_extractor::SmartIpKeyExtractor};
 use tracing::{info, warn};
 
 mod anilist_client;
@@ -33,8 +35,8 @@ use anilist_client::AnilistClient;
 use dict_builder::DictBuilder;
 use disk_cache::{DiskDataCache, DiskImageCache};
 use image_handler::ImageHandler;
-use models::UserMediaEntry;
 use models::CharacterData;
+use models::UserMediaEntry;
 use vndb_client::VndbClient;
 
 /// Returns the path to the `static` directory.
@@ -128,10 +130,16 @@ impl AppState {
                     let mut store = dl.lock().await;
                     let now = std::time::Instant::now();
                     let before = store.len();
-                    store.retain(|_, (_, created)| now.duration_since(*created).as_secs() < DOWNLOAD_TOKEN_MAX_AGE_SECS);
+                    store.retain(|_, (_, created)| {
+                        now.duration_since(*created).as_secs() < DOWNLOAD_TOKEN_MAX_AGE_SECS
+                    });
                     let removed = before - store.len();
                     if removed > 0 {
-                        info!(removed = removed, remaining = store.len(), "Download token cleanup");
+                        info!(
+                            removed = removed,
+                            remaining = store.len(),
+                            "Download token cleanup"
+                        );
                     }
                 }
             });
@@ -163,16 +171,16 @@ impl AppState {
 
 #[derive(Deserialize)]
 struct DictQuery {
-    source: Option<String>,    // "vndb" or "anilist" (for single-media mode)
-    id: Option<String>,        // VN ID like "v17" or AniList media ID (for single-media mode)
+    source: Option<String>, // "vndb" or "anilist" (for single-media mode)
+    id: Option<String>,     // VN ID like "v17" or AniList media ID (for single-media mode)
     #[serde(default)]
     spoiler_level: u8,
     #[serde(default = "default_media_type")]
-    media_type: String,        // "ANIME" or "MANGA" (for AniList single-media)
+    media_type: String, // "ANIME" or "MANGA" (for AniList single-media)
     vndb_user: Option<String>,    // VNDB username (for username mode)
     anilist_user: Option<String>, // AniList username (for username mode)
     #[serde(default = "default_honorifics")]
-    honorifics: bool,             // Generate honorific suffix entries (default true)
+    honorifics: bool, // Generate honorific suffix entries (default true)
 }
 
 #[derive(Deserialize)]
@@ -247,16 +255,16 @@ async fn main() {
 
     // Rate limiting: strict for expensive generation endpoints
     let generate_governor = GovernorConfigBuilder::default()
-        .per_second(20)   // replenish 1 token every 20 seconds
-        .burst_size(3)    // allow burst of 3 requests
+        .per_second(20) // replenish 1 token every 20 seconds
+        .burst_size(3) // allow burst of 3 requests
         .key_extractor(SmartIpKeyExtractor)
         .finish()
         .unwrap();
 
     // Rate limiting: relaxed for lightweight API endpoints
     let api_governor = GovernorConfigBuilder::default()
-        .per_second(2)    // replenish 1 token every 2 seconds
-        .burst_size(10)   // allow burst of 10 requests
+        .per_second(2) // replenish 1 token every 2 seconds
+        .burst_size(10) // allow burst of 10 requests
         .key_extractor(SmartIpKeyExtractor)
         .finish()
         .unwrap();
@@ -334,13 +342,22 @@ async fn fetch_user_lists(
     State(state): State<AppState>,
 ) -> impl IntoResponse {
     let vndb_user = params.vndb_user.as_deref().unwrap_or("").trim().to_string();
-    let anilist_user = params.anilist_user.as_deref().unwrap_or("").trim().to_string();
+    let anilist_user = params
+        .anilist_user
+        .as_deref()
+        .unwrap_or("")
+        .trim()
+        .to_string();
 
     if vndb_user.is_empty() && anilist_user.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
-            [("content-type", "application/json"), ("access-control-allow-origin", "*")],
-            r#"{"error":"At least one username (vndb_user or anilist_user) is required"}"#.to_string(),
+            [
+                ("content-type", "application/json"),
+                ("access-control-allow-origin", "*"),
+            ],
+            r#"{"error":"At least one username (vndb_user or anilist_user) is required"}"#
+                .to_string(),
         )
             .into_response();
     }
@@ -368,7 +385,10 @@ async fn fetch_user_lists(
         let error_msg = errors.join("; ");
         return (
             StatusCode::BAD_REQUEST,
-            [("content-type", "application/json"), ("access-control-allow-origin", "*")],
+            [
+                ("content-type", "application/json"),
+                ("access-control-allow-origin", "*"),
+            ],
             serde_json::json!({"error": error_msg}).to_string(),
         )
             .into_response();
@@ -382,7 +402,10 @@ async fn fetch_user_lists(
 
     (
         StatusCode::OK,
-        [("content-type", "application/json"), ("access-control-allow-origin", "*")],
+        [
+            ("content-type", "application/json"),
+            ("access-control-allow-origin", "*"),
+        ],
         response.to_string(),
     )
         .into_response()
@@ -417,7 +440,9 @@ async fn generate_stream(
                 {
                     let mut store = state.downloads.lock().await;
                     let now = std::time::Instant::now();
-                    store.retain(|_, (_, created)| now.duration_since(*created).as_secs() < DOWNLOAD_TOKEN_MAX_AGE_SECS);
+                    store.retain(|_, (_, created)| {
+                        now.duration_since(*created).as_secs() < DOWNLOAD_TOKEN_MAX_AGE_SECS
+                    });
                     store.insert(token.clone(), (zip_bytes, now));
                 }
                 let _ = tx
@@ -452,7 +477,10 @@ async fn download_zip(
             StatusCode::OK,
             [
                 ("content-type", "application/zip"),
-                ("content-disposition", "attachment; filename=bee_characters.zip"),
+                (
+                    "content-disposition",
+                    "attachment; filename=bee_characters.zip",
+                ),
                 ("access-control-allow-origin", "*"),
             ],
             zip_bytes,
@@ -497,17 +525,15 @@ async fn fetch_and_cache_image(
         response.bytes().await.ok()
     };
 
-    let raw_bytes = match tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        download_future,
-    ).await {
-        Ok(Some(bytes)) => bytes,
-        Ok(None) => return None,
-        Err(_) => {
-            warn!(url = url, "Image download timed out after 10s");
-            return None;
-        }
-    };
+    let raw_bytes =
+        match tokio::time::timeout(std::time::Duration::from_secs(10), download_future).await {
+            Ok(Some(bytes)) => bytes,
+            Ok(None) => return None,
+            Err(_) => {
+                warn!(url = url, "Image download timed out after 10s");
+                return None;
+            }
+        };
 
     // Resize to thumbnail + convert to WebP
     let (resized, ext) = ImageHandler::resize_image(&raw_bytes);
@@ -635,26 +661,20 @@ async fn generate_dict_from_usernames(
         url_parts.push(format!("vndb_user={}", urlencoding::encode(vndb_user)));
     }
     if !anilist_user.is_empty() {
-        url_parts.push(format!("anilist_user={}", urlencoding::encode(anilist_user)));
+        url_parts.push(format!(
+            "anilist_user={}",
+            urlencoding::encode(anilist_user)
+        ));
     }
     url_parts.push(format!("spoiler_level={}", spoiler_level));
     if !honorifics {
         url_parts.push("honorifics=false".to_string());
     }
-    let download_url = format!(
-        "{}/api/yomitan-dict?{}",
-        base,
-        url_parts.join("&")
-    );
+    let download_url = format!("{}/api/yomitan-dict?{}", base, url_parts.join("&"));
 
     let description = format!("Character Dictionary ({} titles)", total);
 
-    let mut builder = DictBuilder::new(
-        spoiler_level,
-        Some(download_url),
-        description,
-        honorifics,
-    );
+    let mut builder = DictBuilder::new(spoiler_level, Some(download_url), description, honorifics);
 
     // Step 2: For each media, fetch characters and add to dictionary
     for (i, entry) in media_entries.iter().enumerate() {
@@ -684,8 +704,10 @@ async fn generate_dict_from_usernames(
                 let api_key = api_cache_key("vndb", &entry.id);
 
                 // Check disk API cache first
-                let cached = state.disk_api_cache.get(&api_key).await
-                    .and_then(|bytes| serde_json::from_slice::<CachedMediaCharacters>(&bytes).ok());
+                let cached =
+                    state.disk_api_cache.get(&api_key).await.and_then(|bytes| {
+                        serde_json::from_slice::<CachedMediaCharacters>(&bytes).ok()
+                    });
 
                 if let Some(mut cached) = cached {
                     // Cache hit — still need to populate image bytes from image cache
@@ -695,7 +717,8 @@ async fn generate_dict_from_usernames(
                         &state.image_cache,
                         &state.disk_image_cache,
                         8,
-                    ).await;
+                    )
+                    .await;
 
                     for character in cached.char_data.all_characters() {
                         builder.add_character(character, &cached.title);
@@ -706,7 +729,11 @@ async fn generate_dict_from_usernames(
 
                     let title = match client.fetch_vn_title(&entry.id).await {
                         Ok((romaji, original)) => {
-                            if !original.is_empty() { original } else { romaji }
+                            if !original.is_empty() {
+                                original
+                            } else {
+                                romaji
+                            }
                         }
                         Err(_) => game_title.clone(),
                     };
@@ -728,7 +755,8 @@ async fn generate_dict_from_usernames(
                                 &state.image_cache,
                                 &state.disk_image_cache,
                                 8,
-                            ).await;
+                            )
+                            .await;
 
                             for character in char_data.all_characters() {
                                 builder.add_character(character, &title);
@@ -760,8 +788,10 @@ async fn generate_dict_from_usernames(
                 let api_key = api_cache_key("anilist", &format!("{}:{}", entry.id, media_type));
 
                 // Check disk API cache first
-                let cached = state.disk_api_cache.get(&api_key).await
-                    .and_then(|bytes| serde_json::from_slice::<CachedMediaCharacters>(&bytes).ok());
+                let cached =
+                    state.disk_api_cache.get(&api_key).await.and_then(|bytes| {
+                        serde_json::from_slice::<CachedMediaCharacters>(&bytes).ok()
+                    });
 
                 if let Some(mut cached) = cached {
                     download_images_concurrent(
@@ -770,7 +800,8 @@ async fn generate_dict_from_usernames(
                         &state.image_cache,
                         &state.disk_image_cache,
                         6,
-                    ).await;
+                    )
+                    .await;
 
                     for character in cached.char_data.all_characters() {
                         builder.add_character(character, &cached.title);
@@ -801,7 +832,8 @@ async fn generate_dict_from_usernames(
                                 &state.image_cache,
                                 &state.disk_image_cache,
                                 6,
-                            ).await;
+                            )
+                            .await;
 
                             for character in char_data.all_characters() {
                                 builder.add_character(character, &title);
@@ -839,16 +871,33 @@ async fn generate_dict(
     let spoiler_level = params.spoiler_level.min(2);
 
     let vndb_user = params.vndb_user.as_deref().unwrap_or("").trim().to_string();
-    let anilist_user = params.anilist_user.as_deref().unwrap_or("").trim().to_string();
+    let anilist_user = params
+        .anilist_user
+        .as_deref()
+        .unwrap_or("")
+        .trim()
+        .to_string();
 
     if !vndb_user.is_empty() || !anilist_user.is_empty() {
-        match generate_dict_from_usernames(&vndb_user, &anilist_user, spoiler_level, params.honorifics, None, &state).await {
+        match generate_dict_from_usernames(
+            &vndb_user,
+            &anilist_user,
+            spoiler_level,
+            params.honorifics,
+            None,
+            &state,
+        )
+        .await
+        {
             Ok(bytes) => {
                 return (
                     StatusCode::OK,
                     [
                         ("content-type", "application/zip"),
-                        ("content-disposition", "attachment; filename=bee_characters.zip"),
+                        (
+                            "content-disposition",
+                            "attachment; filename=bee_characters.zip",
+                        ),
                         ("access-control-allow-origin", "*"),
                     ],
                     bytes,
@@ -874,13 +923,22 @@ async fn generate_dict(
     }
 
     // Check disk ZIP cache for single-media requests
-    let cache_key = zip_cache_key(source, id, spoiler_level, params.honorifics, &params.media_type);
+    let cache_key = zip_cache_key(
+        source,
+        id,
+        spoiler_level,
+        params.honorifics,
+        &params.media_type,
+    );
     if let Some(cached) = state.disk_zip_cache.get(&cache_key).await {
         return (
             StatusCode::OK,
             [
                 ("content-type", "application/zip"),
-                ("content-disposition", "attachment; filename=bee_characters.zip"),
+                (
+                    "content-disposition",
+                    "attachment; filename=bee_characters.zip",
+                ),
                 ("access-control-allow-origin", "*"),
             ],
             cached,
@@ -897,26 +955,51 @@ async fn generate_dict(
             urlencoding::encode(id),
             spoiler_level,
             urlencoding::encode(&params.media_type),
-            if !params.honorifics { "&honorifics=false" } else { "" }
+            if !params.honorifics {
+                "&honorifics=false"
+            } else {
+                ""
+            }
         )
     };
 
     let result = match source.to_lowercase().as_str() {
-        "vndb" => generate_vndb_dict(id, spoiler_level, params.honorifics, &download_url, &state).await,
+        "vndb" => {
+            generate_vndb_dict(id, spoiler_level, params.honorifics, &download_url, &state).await
+        }
         "anilist" => {
             let media_id: i32 = match id.parse() {
                 Ok(id) => id,
                 Err(_) => {
-                    return (StatusCode::BAD_REQUEST, "Invalid AniList ID: must be a number").into_response()
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        "Invalid AniList ID: must be a number",
+                    )
+                        .into_response()
                 }
             };
             let media_type = params.media_type.to_uppercase();
             if media_type != "ANIME" && media_type != "MANGA" {
-                return (StatusCode::BAD_REQUEST, "media_type must be ANIME or MANGA").into_response();
+                return (StatusCode::BAD_REQUEST, "media_type must be ANIME or MANGA")
+                    .into_response();
             }
-            generate_anilist_dict(media_id, &media_type, spoiler_level, params.honorifics, &download_url, &state).await
+            generate_anilist_dict(
+                media_id,
+                &media_type,
+                spoiler_level,
+                params.honorifics,
+                &download_url,
+                &state,
+            )
+            .await
         }
-        _ => return (StatusCode::BAD_REQUEST, "source must be 'vndb' or 'anilist'").into_response(),
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "source must be 'vndb' or 'anilist'",
+            )
+                .into_response()
+        }
     };
 
     match result {
@@ -927,7 +1010,10 @@ async fn generate_dict(
                 StatusCode::OK,
                 [
                     ("content-type", "application/zip"),
-                    ("content-disposition", "attachment; filename=bee_characters.zip"),
+                    (
+                        "content-disposition",
+                        "attachment; filename=bee_characters.zip",
+                    ),
                     ("access-control-allow-origin", "*"),
                 ],
                 bytes,
@@ -943,7 +1029,12 @@ async fn generate_index(Query(params): Query<DictQuery>) -> impl IntoResponse {
     let spoiler_level = params.spoiler_level.min(2);
 
     let vndb_user = params.vndb_user.as_deref().unwrap_or("").trim().to_string();
-    let anilist_user = params.anilist_user.as_deref().unwrap_or("").trim().to_string();
+    let anilist_user = params
+        .anilist_user
+        .as_deref()
+        .unwrap_or("")
+        .trim()
+        .to_string();
 
     let download_url = if !vndb_user.is_empty() || !anilist_user.is_empty() {
         let base = base_url();
@@ -952,17 +1043,16 @@ async fn generate_index(Query(params): Query<DictQuery>) -> impl IntoResponse {
             url_parts.push(format!("vndb_user={}", urlencoding::encode(&vndb_user)));
         }
         if !anilist_user.is_empty() {
-            url_parts.push(format!("anilist_user={}", urlencoding::encode(&anilist_user)));
+            url_parts.push(format!(
+                "anilist_user={}",
+                urlencoding::encode(&anilist_user)
+            ));
         }
         url_parts.push(format!("spoiler_level={}", spoiler_level));
         if !params.honorifics {
             url_parts.push("honorifics=false".to_string());
         }
-        format!(
-            "{}/api/yomitan-dict?{}",
-            base,
-            url_parts.join("&")
-        )
+        format!("{}/api/yomitan-dict?{}", base, url_parts.join("&"))
     } else {
         let base = base_url();
         let source = params.source.as_deref().unwrap_or("");
@@ -974,11 +1064,20 @@ async fn generate_index(Query(params): Query<DictQuery>) -> impl IntoResponse {
             urlencoding::encode(id),
             spoiler_level,
             urlencoding::encode(&params.media_type),
-            if !params.honorifics { "&honorifics=false" } else { "" }
+            if !params.honorifics {
+                "&honorifics=false"
+            } else {
+                ""
+            }
         )
     };
 
-    let builder = DictBuilder::new(spoiler_level, Some(download_url), String::new(), params.honorifics);
+    let builder = DictBuilder::new(
+        spoiler_level,
+        Some(download_url),
+        String::new(),
+        params.honorifics,
+    );
     let index = builder.create_index_public();
 
     (
@@ -1004,7 +1103,10 @@ async fn generate_vndb_dict(
     let api_key = api_cache_key("vndb", vn_id);
 
     // Check disk API cache first
-    let cached = state.disk_api_cache.get(&api_key).await
+    let cached = state
+        .disk_api_cache
+        .get(&api_key)
+        .await
         .and_then(|bytes| serde_json::from_slice::<CachedMediaCharacters>(&bytes).ok());
 
     let (mut char_data, game_title) = if let Some(cached) = cached {
@@ -1043,7 +1145,8 @@ async fn generate_vndb_dict(
         &state.image_cache,
         &state.disk_image_cache,
         8,
-    ).await;
+    )
+    .await;
 
     let mut builder = DictBuilder::new(
         spoiler_level,
@@ -1074,7 +1177,10 @@ async fn generate_anilist_dict(
     let api_key = api_cache_key("anilist", &format!("{}:{}", media_id, media_type));
 
     // Check disk API cache first
-    let cached = state.disk_api_cache.get(&api_key).await
+    let cached = state
+        .disk_api_cache
+        .get(&api_key)
+        .await
         .and_then(|bytes| serde_json::from_slice::<CachedMediaCharacters>(&bytes).ok());
 
     let (mut char_data, game_title) = if let Some(cached) = cached {
@@ -1109,7 +1215,8 @@ async fn generate_anilist_dict(
         &state.image_cache,
         &state.disk_image_cache,
         6,
-    ).await;
+    )
+    .await;
 
     let mut builder = DictBuilder::new(
         spoiler_level,

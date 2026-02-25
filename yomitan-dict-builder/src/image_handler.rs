@@ -41,7 +41,6 @@ impl ImageHandler {
         "jpg" // fallback
     }
 
-
     /// Resize raw image bytes to fit within MAX_WIDTH × MAX_HEIGHT, output as WebP.
     /// Returns (resized_bytes, "webp") on success, or the original (bytes, detected_ext) on failure.
     pub fn resize_image(bytes: &[u8]) -> (Vec<u8>, &'static str) {
@@ -92,28 +91,42 @@ mod tests {
 
     #[test]
     fn test_detect_extension_jpeg() {
-        assert_eq!(ImageHandler::detect_extension(&[0xFF, 0xD8, 0xFF, 0xE0]), "jpg");
+        assert_eq!(
+            ImageHandler::detect_extension(&[0xFF, 0xD8, 0xFF, 0xE0]),
+            "jpg"
+        );
     }
 
     #[test]
     fn test_detect_extension_png() {
-        assert_eq!(ImageHandler::detect_extension(&[0x89, 0x50, 0x4E, 0x47]), "png");
+        assert_eq!(
+            ImageHandler::detect_extension(&[0x89, 0x50, 0x4E, 0x47]),
+            "png"
+        );
     }
 
     #[test]
     fn test_detect_extension_gif() {
-        assert_eq!(ImageHandler::detect_extension(&[0x47, 0x49, 0x46, 0x38]), "gif");
+        assert_eq!(
+            ImageHandler::detect_extension(&[0x47, 0x49, 0x46, 0x38]),
+            "gif"
+        );
     }
 
     #[test]
     fn test_detect_extension_webp() {
-        let webp_header = [0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50];
+        let webp_header = [
+            0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
+        ];
         assert_eq!(ImageHandler::detect_extension(&webp_header), "webp");
     }
 
     #[test]
     fn test_detect_extension_unknown() {
-        assert_eq!(ImageHandler::detect_extension(&[0x00, 0x01, 0x02, 0x03]), "jpg");
+        assert_eq!(
+            ImageHandler::detect_extension(&[0x00, 0x01, 0x02, 0x03]),
+            "jpg"
+        );
     }
 
     #[test]
@@ -152,8 +165,16 @@ mod tests {
 
         // Verify the resized image dimensions are within bounds
         let resized_img = image::load_from_memory(&resized).unwrap();
-        assert!(resized_img.width() <= 160, "width {} > 160", resized_img.width());
-        assert!(resized_img.height() <= 200, "height {} > 200", resized_img.height());
+        assert!(
+            resized_img.width() <= 160,
+            "width {} > 160",
+            resized_img.width()
+        );
+        assert!(
+            resized_img.height() <= 200,
+            "height {} > 200",
+            resized_img.height()
+        );
     }
 
     #[test]
@@ -170,7 +191,11 @@ mod tests {
         assert!(resized_img.width() <= 160);
         // Aspect ratio should be roughly 1:2
         let ratio = resized_img.width() as f64 / resized_img.height() as f64;
-        assert!((ratio - 0.5).abs() < 0.05, "aspect ratio {} not ~0.5", ratio);
+        assert!(
+            (ratio - 0.5).abs() < 0.05,
+            "aspect ratio {} not ~0.5",
+            ratio
+        );
     }
 
     #[test]

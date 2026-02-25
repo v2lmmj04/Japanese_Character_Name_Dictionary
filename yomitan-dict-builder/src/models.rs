@@ -22,13 +22,13 @@ pub struct CharacterTrait {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Character {
     pub id: String,
-    pub name: String,              // Romanized (Western order for VNDB: "Given Family")
-    pub name_original: String,     // Japanese (Japanese order: "Family Given")
-    pub role: String,              // "main", "primary", "side", "appears"
-    pub sex: Option<String>,       // "m" or "f"
-    pub age: Option<String>,       // String because AniList may return "17-18"
-    pub height: Option<u32>,       // cm (VNDB only; None for AniList)
-    pub weight: Option<u32>,       // kg (VNDB only; None for AniList)
+    pub name: String,          // Romanized (Western order for VNDB: "Given Family")
+    pub name_original: String, // Japanese (Japanese order: "Family Given")
+    pub role: String,          // "main", "primary", "side", "appears"
+    pub sex: Option<String>,   // "m" or "f"
+    pub age: Option<String>,   // String because AniList may return "17-18"
+    pub height: Option<u32>,   // cm (VNDB only; None for AniList)
+    pub weight: Option<u32>,   // kg (VNDB only; None for AniList)
     pub blood_type: Option<String>,
     pub birthday: Option<Vec<u32>>, // [month, day]
     pub description: Option<String>,
@@ -37,9 +37,9 @@ pub struct Character {
     pub roles: Vec<CharacterTrait>,
     pub engages_in: Vec<CharacterTrait>,
     pub subject_of: Vec<CharacterTrait>,
-    pub image_url: Option<String>,      // Raw URL from API (used for downloading)
-    pub image_bytes: Option<Vec<u8>>,   // Raw image bytes (after download + resize)
-    pub image_ext: Option<String>,      // File extension: "jpg", "png", "webp", etc.
+    pub image_url: Option<String>, // Raw URL from API (used for downloading)
+    pub image_bytes: Option<Vec<u8>>, // Raw image bytes (after download + resize)
+    pub image_ext: Option<String>, // File extension: "jpg", "png", "webp", etc.
 }
 
 /// Categorized characters for a single game/media.
@@ -122,24 +122,42 @@ mod tests {
             name: "A".to_string(),
             name_original: "A".to_string(),
             role: "main".to_string(),
-            sex: None, age: None, height: None, weight: None,
-            blood_type: None, birthday: None, description: None,
-            aliases: vec![], personality: vec![], roles: vec![],
-            engages_in: vec![], subject_of: vec![],
+            sex: None,
+            age: None,
+            height: None,
+            weight: None,
+            blood_type: None,
+            birthday: None,
+            description: None,
+            aliases: vec![],
+            personality: vec![],
+            roles: vec![],
+            engages_in: vec![],
+            subject_of: vec![],
             image_url: None,
-            image_bytes: None, image_ext: None,
+            image_bytes: None,
+            image_ext: None,
         });
         cd.side.push(Character {
             id: "c2".to_string(),
             name: "B".to_string(),
             name_original: "B".to_string(),
             role: "side".to_string(),
-            sex: None, age: None, height: None, weight: None,
-            blood_type: None, birthday: None, description: None,
-            aliases: vec![], personality: vec![], roles: vec![],
-            engages_in: vec![], subject_of: vec![],
+            sex: None,
+            age: None,
+            height: None,
+            weight: None,
+            blood_type: None,
+            birthday: None,
+            description: None,
+            aliases: vec![],
+            personality: vec![],
+            roles: vec![],
+            engages_in: vec![],
+            subject_of: vec![],
             image_url: None,
-            image_bytes: None, image_ext: None,
+            image_bytes: None,
+            image_ext: None,
         });
 
         assert_eq!(cd.all_characters().count(), 2);
@@ -156,12 +174,21 @@ mod tests {
             name: "A".to_string(),
             name_original: "A".to_string(),
             role: "main".to_string(),
-            sex: None, age: None, height: None, weight: None,
-            blood_type: None, birthday: None, description: None,
-            aliases: vec![], personality: vec![], roles: vec![],
-            engages_in: vec![], subject_of: vec![],
+            sex: None,
+            age: None,
+            height: None,
+            weight: None,
+            blood_type: None,
+            birthday: None,
+            description: None,
+            aliases: vec![],
+            personality: vec![],
+            roles: vec![],
+            engages_in: vec![],
+            subject_of: vec![],
             image_url: None,
-            image_bytes: None, image_ext: None,
+            image_bytes: None,
+            image_ext: None,
         });
 
         for c in cd.all_characters_mut() {

@@ -8,8 +8,7 @@ use crate::models::{Character, CharacterTrait};
 
 static RE_VNDB_SPOILER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?is)\[spoiler\].*?\[/spoiler\]").unwrap());
-static RE_ANILIST_SPOILER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?s)~!.*?!~").unwrap());
+static RE_ANILIST_SPOILER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)~!.*?!~").unwrap());
 static RE_URL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\[url=[^\]]+\]([^\[]*)\[/url\]").unwrap());
 static RE_QUOTE: LazyLock<Regex> =
@@ -29,10 +28,10 @@ static RE_PLACEHOLDER: LazyLock<Regex> =
 
 /// Role badge colors
 const ROLE_COLORS: &[(&str, &str)] = &[
-    ("main", "#4CAF50"),     // green
-    ("primary", "#2196F3"),  // blue
-    ("side", "#FF9800"),     // orange
-    ("appears", "#9E9E9E"),  // gray
+    ("main", "#4CAF50"),    // green
+    ("primary", "#2196F3"), // blue
+    ("side", "#FF9800"),    // orange
+    ("appears", "#9E9E9E"), // gray
 ];
 
 /// Role display labels
@@ -119,7 +118,12 @@ impl ContentBuilder {
                 // Mismatched tags — strip the tags, keep content
                 if open_tag != close_tag {
                     let full = cap.get(0).unwrap();
-                    working = format!("{}{}{}", &working[..full.start()], &cap[2], &working[full.end()..]);
+                    working = format!(
+                        "{}{}{}",
+                        &working[..full.start()],
+                        &cap[2],
+                        &working[full.end()..]
+                    );
                     continue;
                 }
 
@@ -145,7 +149,12 @@ impl ContentBuilder {
                 nodes.push(node);
                 let placeholder = format!("{}{}\x00", placeholder_prefix, idx);
                 let full = cap.get(0).unwrap();
-                working = format!("{}{}{}", &working[..full.start()], placeholder, &working[full.end()..]);
+                working = format!(
+                    "{}{}{}",
+                    &working[..full.start()],
+                    placeholder,
+                    &working[full.end()..]
+                );
             } else {
                 break;
             }
@@ -215,9 +224,7 @@ impl ContentBuilder {
 
         if let Some(ref sex) = char.sex {
             let sex_lower = sex.to_lowercase();
-            if let Some((_, display)) =
-                SEX_DISPLAY.iter().find(|(k, _)| *k == sex_lower.as_str())
-            {
+            if let Some((_, display)) = SEX_DISPLAY.iter().find(|(k, _)| *k == sex_lower.as_str()) {
                 parts.push(display.to_string());
             }
         }
@@ -487,7 +494,11 @@ impl ContentBuilder {
         json!([
             term,
             reading,
-            if role.is_empty() { "name".to_string() } else { format!("name {}", role) },
+            if role.is_empty() {
+                "name".to_string()
+            } else {
+                format!("name {}", role)
+            },
             "",
             score,
             [structured_content],
@@ -517,10 +528,19 @@ mod tests {
             description: Some("The protagonist.\n[spoiler]Secret info[/spoiler]".to_string()),
             aliases: vec!["しんいち".to_string()],
             personality: vec![
-                CharacterTrait { name: "Kind".to_string(), spoiler: 0 },
-                CharacterTrait { name: "Secret trait".to_string(), spoiler: 2 },
+                CharacterTrait {
+                    name: "Kind".to_string(),
+                    spoiler: 0,
+                },
+                CharacterTrait {
+                    name: "Secret trait".to_string(),
+                    spoiler: 2,
+                },
             ],
-            roles: vec![CharacterTrait { name: "Student".to_string(), spoiler: 0 }],
+            roles: vec![CharacterTrait {
+                name: "Student".to_string(),
+                spoiler: 0,
+            }],
             engages_in: vec![],
             subject_of: vec![],
             image_url: None,
@@ -559,9 +579,8 @@ mod tests {
 
     #[test]
     fn test_parse_vndb_markup_url() {
-        let result = ContentBuilder::parse_vndb_markup(
-            "see [url=https://example.com]this link[/url] here",
-        );
+        let result =
+            ContentBuilder::parse_vndb_markup("see [url=https://example.com]this link[/url] here");
         assert_eq!(result, "see this link here");
     }
 
@@ -576,13 +595,19 @@ mod tests {
     #[test]
     fn test_parse_bbcode_bold() {
         let result = ContentBuilder::parse_bbcode_to_structured("[b]bold text[/b]");
-        assert_eq!(result, json!({"tag": "span", "style": {"fontWeight": "bold"}, "content": "bold text"}));
+        assert_eq!(
+            result,
+            json!({"tag": "span", "style": {"fontWeight": "bold"}, "content": "bold text"})
+        );
     }
 
     #[test]
     fn test_parse_bbcode_italic() {
         let result = ContentBuilder::parse_bbcode_to_structured("[i]italic text[/i]");
-        assert_eq!(result, json!({"tag": "span", "style": {"fontStyle": "italic"}, "content": "italic text"}));
+        assert_eq!(
+            result,
+            json!({"tag": "span", "style": {"fontStyle": "italic"}, "content": "italic text"})
+        );
     }
 
     #[test]
@@ -615,9 +640,8 @@ mod tests {
 
     #[test]
     fn test_parse_bbcode_preserves_brackets_not_bbcode() {
-        let result = ContentBuilder::parse_bbcode_to_structured(
-            "[Translated from official website]",
-        );
+        let result =
+            ContentBuilder::parse_bbcode_to_structured("[Translated from official website]");
         assert_eq!(result, json!("[Translated from official website]"));
     }
 
@@ -639,25 +663,19 @@ mod tests {
 
     #[test]
     fn test_parse_vndb_markup_quote() {
-        let result = ContentBuilder::parse_vndb_markup(
-            "before [quote]quoted text[/quote] after",
-        );
+        let result = ContentBuilder::parse_vndb_markup("before [quote]quoted text[/quote] after");
         assert_eq!(result, "before quoted text after");
     }
 
     #[test]
     fn test_parse_vndb_markup_code() {
-        let result = ContentBuilder::parse_vndb_markup(
-            "see [code]some code[/code] here",
-        );
+        let result = ContentBuilder::parse_vndb_markup("see [code]some code[/code] here");
         assert_eq!(result, "see some code here");
     }
 
     #[test]
     fn test_parse_vndb_markup_raw() {
-        let result = ContentBuilder::parse_vndb_markup(
-            "text [raw][b]not bold[/b][/raw] end",
-        );
+        let result = ContentBuilder::parse_vndb_markup("text [raw][b]not bold[/b][/raw] end");
         assert_eq!(result, "text [b]not bold[/b] end");
     }
 
@@ -835,14 +853,14 @@ mod tests {
         let entry = ContentBuilder::create_term_entry("須々木", "すずき", "main", 100, &sc);
         let arr = entry.as_array().unwrap();
         assert_eq!(arr.len(), 8);
-        assert_eq!(arr[0], "須々木");           // term
-        assert_eq!(arr[1], "すずき");           // reading
-        assert_eq!(arr[2], "name main");         // tags
-        assert_eq!(arr[3], "");                  // rules
-        assert_eq!(arr[4], 100);                 // score
-        assert!(arr[5].is_array());              // definitions array
-        assert_eq!(arr[6], 0);                   // sequence
-        assert_eq!(arr[7], "");                  // termTags
+        assert_eq!(arr[0], "須々木"); // term
+        assert_eq!(arr[1], "すずき"); // reading
+        assert_eq!(arr[2], "name main"); // tags
+        assert_eq!(arr[3], ""); // rules
+        assert_eq!(arr[4], 100); // score
+        assert!(arr[5].is_array()); // definitions array
+        assert_eq!(arr[6], 0); // sequence
+        assert_eq!(arr[7], ""); // termTags
     }
 
     #[test]
@@ -863,13 +881,20 @@ mod tests {
                 { "tag": "div", "content": "original" }
             ]
         });
-        let result = ContentBuilder::build_honorific_content(&base, "さん", "Generic polite suffix (Mr./Ms./Mrs.)");
+        let result = ContentBuilder::build_honorific_content(
+            &base,
+            "さん",
+            "Generic polite suffix (Mr./Ms./Mrs.)",
+        );
         let items = result["content"].as_array().unwrap();
         // Banner should be first element
         assert_eq!(items[0]["tag"], "div");
         let banner_content = items[0]["content"].as_array().unwrap();
         assert_eq!(banner_content[0]["content"], "さん");
-        assert!(banner_content[1]["content"].as_str().unwrap().contains("Generic polite"));
+        assert!(banner_content[1]["content"]
+            .as_str()
+            .unwrap()
+            .contains("Generic polite"));
         // Original content should follow
         assert_eq!(items[1]["content"], "original");
     }
@@ -906,18 +931,21 @@ mod tests {
         // Non-greedy regex matches first [spoiler] to first [/spoiler],
         // leaving the outer closing tag as visible text
         let result = ContentBuilder::strip_spoilers(
-            "[spoiler]outer [spoiler]inner[/spoiler] still hidden[/spoiler]"
+            "[spoiler]outer [spoiler]inner[/spoiler] still hidden[/spoiler]",
         );
         // First match: "[spoiler]outer [spoiler]inner[/spoiler]" is removed
         // Remaining: " still hidden[/spoiler]"
-        assert!(result.contains("still hidden"), "Nested spoiler leaves partial text: '{}'", result);
+        assert!(
+            result.contains("still hidden"),
+            "Nested spoiler leaves partial text: '{}'",
+            result
+        );
     }
 
     #[test]
     fn test_strip_spoilers_multiple_separate() {
-        let result = ContentBuilder::strip_spoilers(
-            "a [spoiler]x[/spoiler] b [spoiler]y[/spoiler] c"
-        );
+        let result =
+            ContentBuilder::strip_spoilers("a [spoiler]x[/spoiler] b [spoiler]y[/spoiler] c");
         assert_eq!(result, "a  b  c");
     }
 
@@ -1044,9 +1072,9 @@ mod tests {
         let content = cb.build_content(&char, None, "Test");
         let items = content["content"].as_array().unwrap();
         // Should use fallback color and "Unknown" label
-        let role_span = items.iter().find(|v| {
-            v["style"]["background"].as_str() == Some("#9E9E9E")
-        });
+        let role_span = items
+            .iter()
+            .find(|v| v["style"]["background"].as_str() == Some("#9E9E9E"));
         assert!(role_span.is_some(), "Unknown role should use gray fallback");
         assert_eq!(role_span.unwrap()["content"], "Unknown");
     }
@@ -1075,12 +1103,16 @@ mod tests {
         // After stripping, description is empty → no Description details section
         let desc_details = items.iter().find(|v| {
             if let Some(arr) = v["content"].as_array() {
-                arr.iter().any(|c| c["content"].as_str() == Some("Description"))
+                arr.iter()
+                    .any(|c| c["content"].as_str() == Some("Description"))
             } else {
                 false
             }
         });
-        assert!(desc_details.is_none(), "Empty description after stripping should not produce a details section");
+        assert!(
+            desc_details.is_none(),
+            "Empty description after stripping should not produce a details section"
+        );
     }
 
     // === Edge case: traits with empty names filtered out ===
@@ -1090,12 +1122,19 @@ mod tests {
         let cb = ContentBuilder::new(2);
         let mut char = make_test_character();
         char.personality = vec![
-            CharacterTrait { name: "".to_string(), spoiler: 0 },
-            CharacterTrait { name: "Kind".to_string(), spoiler: 0 },
+            CharacterTrait {
+                name: "".to_string(),
+                spoiler: 0,
+            },
+            CharacterTrait {
+                name: "Kind".to_string(),
+                spoiler: 0,
+            },
         ];
         char.roles = vec![];
         let items = cb.build_traits_by_category(&char);
-        let all_text: String = items.iter()
+        let all_text: String = items
+            .iter()
             .filter_map(|i| i["content"].as_str())
             .collect::<Vec<_>>()
             .join(" ");
@@ -1109,7 +1148,7 @@ mod tests {
     #[test]
     fn test_strip_spoilers_mixed_formats() {
         let result = ContentBuilder::strip_spoilers(
-            "visible [spoiler]vndb hidden[/spoiler] middle ~!anilist hidden!~ end"
+            "visible [spoiler]vndb hidden[/spoiler] middle ~!anilist hidden!~ end",
         );
         assert_eq!(result, "visible  middle  end");
     }
@@ -1119,8 +1158,8 @@ mod tests {
     #[test]
     fn test_spoiler_then_bbcode() {
         // Spoiler stripping happens before BBCode parsing in build_content
-        let stripped = ContentBuilder::strip_spoilers("[spoiler][b]hidden bold[/b][/spoiler] visible");
+        let stripped =
+            ContentBuilder::strip_spoilers("[spoiler][b]hidden bold[/b][/spoiler] visible");
         assert_eq!(stripped, "visible");
     }
 }
-

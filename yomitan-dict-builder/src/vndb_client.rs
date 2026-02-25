@@ -121,7 +121,10 @@ impl VndbClient {
         .map_err(|e| format!("Request failed: {}", e))?;
 
         if response.status() != 200 {
-            return Err(format!("VNDB user API returned status {}", response.status()));
+            return Err(format!(
+                "VNDB user API returned status {}",
+                response.status()
+            ));
         }
 
         let data: serde_json::Value = response
@@ -130,22 +133,16 @@ impl VndbClient {
             .map_err(|e| format!("Failed to parse JSON: {}", e))?;
 
         // The response has the query as key, value is null or {id, username}
-        let user_data = data
-            .get(username)
-            .or_else(|| {
-                // Try case-insensitive: the API returns with the original casing of the query
-                data.as_object().and_then(|obj| {
-                    obj.values().next()
-                })
-            });
+        let user_data = data.get(username).or_else(|| {
+            // Try case-insensitive: the API returns with the original casing of the query
+            data.as_object().and_then(|obj| obj.values().next())
+        });
 
         match user_data {
-            Some(val) if !val.is_null() => {
-                val["id"]
-                    .as_str()
-                    .map(|s| s.to_string())
-                    .ok_or_else(|| "User ID not found in response".to_string())
-            }
+            Some(val) if !val.is_null() => val["id"]
+                .as_str()
+                .map(|s| s.to_string())
+                .ok_or_else(|| "User ID not found in response".to_string()),
             _ => Err(format!("VNDB user '{}' not found", username)),
         }
     }
@@ -183,7 +180,10 @@ impl VndbClient {
             .map_err(|e| format!("Request failed: {}", e))?;
 
             if response.status() != 200 {
-                return Err(format!("VNDB ulist API returned status {}", response.status()));
+                return Err(format!(
+                    "VNDB ulist API returned status {}",
+                    response.status()
+                ));
             }
 
             let data: serde_json::Value = response
@@ -201,14 +201,8 @@ impl VndbClient {
                     continue;
                 }
 
-                let title_romaji = item["vn"]["title"]
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string();
-                let title_japanese = item["vn"]["alttitle"]
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string();
+                let title_romaji = item["vn"]["title"].as_str().unwrap_or("").to_string();
+                let title_japanese = item["vn"]["alttitle"].as_str().unwrap_or("").to_string();
 
                 // Prefer Japanese title, fall back to romaji
                 let title = if !title_japanese.is_empty() {
@@ -434,7 +428,6 @@ impl VndbClient {
             image_ext: None,
         })
     }
-
 }
 
 #[cfg(test)]
@@ -471,7 +464,10 @@ mod tests {
         match VndbClient::parse_user_input(input) {
             ParsedUserInput::UserId(id) => assert_eq!(id, expected_id, "input: {}", input),
             ParsedUserInput::Username(name) => {
-                panic!("Expected UserId('{}') but got Username('{}') for input: {}", expected_id, name, input)
+                panic!(
+                    "Expected UserId('{}') but got Username('{}') for input: {}",
+                    expected_id, name, input
+                )
             }
         }
     }
@@ -480,7 +476,10 @@ mod tests {
         match VndbClient::parse_user_input(input) {
             ParsedUserInput::Username(name) => assert_eq!(name, expected_name, "input: {}", input),
             ParsedUserInput::UserId(id) => {
-                panic!("Expected Username('{}') but got UserId('{}') for input: {}", expected_name, id, input)
+                panic!(
+                    "Expected Username('{}') but got UserId('{}') for input: {}",
+                    expected_name, id, input
+                )
             }
         }
     }

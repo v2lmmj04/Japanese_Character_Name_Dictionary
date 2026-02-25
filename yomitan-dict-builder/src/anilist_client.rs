@@ -97,10 +97,7 @@ impl AnilistClient {
                 if response.status() == 404 {
                     return Err(format!("AniList user '{}' not found", username));
                 }
-                return Err(format!(
-                    "AniList API returned status {}",
-                    response.status()
-                ));
+                return Err(format!("AniList API returned status {}", response.status()));
             }
 
             let data: serde_json::Value = response
@@ -120,8 +117,7 @@ impl AnilistClient {
                 return Err(format!("GraphQL error: {:?}", errors));
             }
 
-            let lists = data["data"]["MediaListCollection"]["lists"]
-                .as_array();
+            let lists = data["data"]["MediaListCollection"]["lists"].as_array();
 
             if let Some(lists) = lists {
                 for list in lists {
@@ -135,18 +131,12 @@ impl AnilistClient {
                             }
 
                             let title_data = &media["title"];
-                            let title_native = title_data["native"]
-                                .as_str()
-                                .unwrap_or("")
-                                .to_string();
-                            let title_romaji = title_data["romaji"]
-                                .as_str()
-                                .unwrap_or("")
-                                .to_string();
-                            let title_english = title_data["english"]
-                                .as_str()
-                                .unwrap_or("")
-                                .to_string();
+                            let title_native =
+                                title_data["native"].as_str().unwrap_or("").to_string();
+                            let title_romaji =
+                                title_data["romaji"].as_str().unwrap_or("").to_string();
+                            let title_english =
+                                title_data["english"].as_str().unwrap_or("").to_string();
 
                             // Prefer native (Japanese), fall back to romaji, then english
                             let title = if !title_native.is_empty() {
@@ -249,10 +239,7 @@ impl AnilistClient {
             .map_err(|e| format!("Request failed: {}", e))?;
 
             if response.status() != 200 {
-                return Err(format!(
-                    "AniList API returned status {}",
-                    response.status()
-                ));
+                return Err(format!("AniList API returned status {}", response.status()));
             }
 
             let data: serde_json::Value = response
@@ -335,14 +322,13 @@ impl AnilistClient {
             .unwrap_or_default();
 
         // Gender: "Male" → "m", "Female" → "f"
-        let sex = node
-            .get("gender")
-            .and_then(|g| g.as_str())
-            .and_then(|g| match g.to_lowercase().chars().next() {
+        let sex = node.get("gender").and_then(|g| g.as_str()).and_then(|g| {
+            match g.to_lowercase().chars().next() {
                 Some('m') => Some("m".to_string()),
                 Some('f') => Some("f".to_string()),
                 _ => None,
-            });
+            }
+        });
 
         // Birthday: {"month": 9, "day": 1} → [9, 1]
         let birthday = node.get("dateOfBirth").and_then(|dob| {
@@ -376,8 +362,8 @@ impl AnilistClient {
             role,
             sex,
             age,
-            height: None,  // AniList doesn't provide
-            weight: None,  // AniList doesn't provide
+            height: None, // AniList doesn't provide
+            weight: None, // AniList doesn't provide
             blood_type: node
                 .get("bloodType")
                 .and_then(|v| v.as_str())
@@ -399,7 +385,6 @@ impl AnilistClient {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -410,7 +395,19 @@ mod tests {
 
     // ── process_character tests ──
 
-    fn make_edge(role: &str, id: u64, full: &str, native: &str, gender: Option<&str>, age: Option<serde_json::Value>, dob: Option<(u64, u64)>, blood: Option<&str>, desc: Option<&str>, alts: Vec<&str>, image: Option<&str>) -> serde_json::Value {
+    fn make_edge(
+        role: &str,
+        id: u64,
+        full: &str,
+        native: &str,
+        gender: Option<&str>,
+        age: Option<serde_json::Value>,
+        dob: Option<(u64, u64)>,
+        blood: Option<&str>,
+        desc: Option<&str>,
+        alts: Vec<&str>,
+        image: Option<&str>,
+    ) -> serde_json::Value {
         let mut node = serde_json::json!({
             "id": id,
             "name": {
@@ -442,7 +439,19 @@ mod tests {
     #[test]
     fn test_process_character_main_role() {
         let client = make_client();
-        let edge = make_edge("MAIN", 12345, "Lelouch Lamperouge", "ルルーシュ・ランペルージ", Some("Male"), Some(serde_json::json!("17")), Some((12, 5)), Some("A"), Some("The protagonist."), vec!["Zero"], Some("https://example.com/img.jpg"));
+        let edge = make_edge(
+            "MAIN",
+            12345,
+            "Lelouch Lamperouge",
+            "ルルーシュ・ランペルージ",
+            Some("Male"),
+            Some(serde_json::json!("17")),
+            Some((12, 5)),
+            Some("A"),
+            Some("The protagonist."),
+            vec!["Zero"],
+            Some("https://example.com/img.jpg"),
+        );
         let ch = client.process_character(&edge).unwrap();
         assert_eq!(ch.id, "12345");
         assert_eq!(ch.name, "Lelouch Lamperouge");
@@ -454,7 +463,10 @@ mod tests {
         assert_eq!(ch.blood_type, Some("A".to_string()));
         assert_eq!(ch.description, Some("The protagonist.".to_string()));
         assert_eq!(ch.aliases, vec!["Zero".to_string()]);
-        assert_eq!(ch.image_url, Some("https://example.com/img.jpg".to_string()));
+        assert_eq!(
+            ch.image_url,
+            Some("https://example.com/img.jpg".to_string())
+        );
         assert!(ch.image_bytes.is_none());
         assert!(ch.height.is_none());
         assert!(ch.weight.is_none());
@@ -467,7 +479,19 @@ mod tests {
     #[test]
     fn test_process_character_supporting_maps_to_primary() {
         let client = make_client();
-        let edge = make_edge("SUPPORTING", 99, "Kallen Stadtfeld", "紅月カレン", Some("Female"), None, None, None, None, vec![], None);
+        let edge = make_edge(
+            "SUPPORTING",
+            99,
+            "Kallen Stadtfeld",
+            "紅月カレン",
+            Some("Female"),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
         let ch = client.process_character(&edge).unwrap();
         assert_eq!(ch.role, "primary");
         assert_eq!(ch.sex, Some("f".to_string()));
@@ -482,7 +506,19 @@ mod tests {
     #[test]
     fn test_process_character_background_maps_to_side() {
         let client = make_client();
-        let edge = make_edge("BACKGROUND", 50, "Extra", "", None, None, None, None, None, vec![], None);
+        let edge = make_edge(
+            "BACKGROUND",
+            50,
+            "Extra",
+            "",
+            None,
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
         let ch = client.process_character(&edge).unwrap();
         assert_eq!(ch.role, "side");
         assert_eq!(ch.name_original, "");
@@ -491,7 +527,19 @@ mod tests {
     #[test]
     fn test_process_character_unknown_role_maps_to_side() {
         let client = make_client();
-        let edge = make_edge("UNKNOWN_ROLE", 50, "Extra", "", None, None, None, None, None, vec![], None);
+        let edge = make_edge(
+            "UNKNOWN_ROLE",
+            50,
+            "Extra",
+            "",
+            None,
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
         let ch = client.process_character(&edge).unwrap();
         assert_eq!(ch.role, "side");
     }
@@ -499,7 +547,19 @@ mod tests {
     #[test]
     fn test_process_character_age_as_string() {
         let client = make_client();
-        let edge = make_edge("MAIN", 1, "A", "あ", None, Some(serde_json::json!("17-18")), None, None, None, vec![], None);
+        let edge = make_edge(
+            "MAIN",
+            1,
+            "A",
+            "あ",
+            None,
+            Some(serde_json::json!("17-18")),
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
         let ch = client.process_character(&edge).unwrap();
         assert_eq!(ch.age, Some("17-18".to_string()));
     }
@@ -507,7 +567,19 @@ mod tests {
     #[test]
     fn test_process_character_age_as_integer() {
         let client = make_client();
-        let edge = make_edge("MAIN", 1, "A", "あ", None, Some(serde_json::json!(25)), None, None, None, vec![], None);
+        let edge = make_edge(
+            "MAIN",
+            1,
+            "A",
+            "あ",
+            None,
+            Some(serde_json::json!(25)),
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
         let ch = client.process_character(&edge).unwrap();
         assert_eq!(ch.age, Some("25".to_string()));
     }
@@ -515,7 +587,19 @@ mod tests {
     #[test]
     fn test_process_character_age_null() {
         let client = make_client();
-        let edge = make_edge("MAIN", 1, "A", "あ", None, None, None, None, None, vec![], None);
+        let edge = make_edge(
+            "MAIN",
+            1,
+            "A",
+            "あ",
+            None,
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
         let ch = client.process_character(&edge).unwrap();
         assert!(ch.age.is_none());
     }
@@ -523,7 +607,19 @@ mod tests {
     #[test]
     fn test_process_character_gender_nonbinary_returns_none() {
         let client = make_client();
-        let edge = make_edge("MAIN", 1, "A", "あ", Some("Non-binary"), None, None, None, None, vec![], None);
+        let edge = make_edge(
+            "MAIN",
+            1,
+            "A",
+            "あ",
+            Some("Non-binary"),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
         let ch = client.process_character(&edge).unwrap();
         // "Non-binary" starts with 'n', which is neither 'm' nor 'f'
         assert!(ch.sex.is_none());
@@ -532,7 +628,19 @@ mod tests {
     #[test]
     fn test_process_character_gender_null() {
         let client = make_client();
-        let edge = make_edge("MAIN", 1, "A", "あ", None, None, None, None, None, vec![], None);
+        let edge = make_edge(
+            "MAIN",
+            1,
+            "A",
+            "あ",
+            None,
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
         let ch = client.process_character(&edge).unwrap();
         assert!(ch.sex.is_none());
     }
@@ -540,7 +648,19 @@ mod tests {
     #[test]
     fn test_process_character_multiple_aliases() {
         let client = make_client();
-        let edge = make_edge("MAIN", 1, "A", "あ", None, None, None, None, None, vec!["Alias1", "Alias2", "Alias3"], None);
+        let edge = make_edge(
+            "MAIN",
+            1,
+            "A",
+            "あ",
+            None,
+            None,
+            None,
+            None,
+            None,
+            vec!["Alias1", "Alias2", "Alias3"],
+            None,
+        );
         let ch = client.process_character(&edge).unwrap();
         assert_eq!(ch.aliases, vec!["Alias1", "Alias2", "Alias3"]);
     }
@@ -549,7 +669,19 @@ mod tests {
     fn test_process_character_empty_aliases_filtered() {
         let client = make_client();
         // Build edge with empty string alias mixed in
-        let mut edge = make_edge("MAIN", 1, "A", "あ", None, None, None, None, None, vec![], None);
+        let mut edge = make_edge(
+            "MAIN",
+            1,
+            "A",
+            "あ",
+            None,
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
         edge["node"]["name"]["alternative"] = serde_json::json!(["Good", "", "Also Good", ""]);
         let ch = client.process_character(&edge).unwrap();
         assert_eq!(ch.aliases, vec!["Good", "Also Good"]);
@@ -573,7 +705,19 @@ mod tests {
     fn test_process_character_birthday_partial_null() {
         // AniList can return {"month": 5, "day": null} for unknown day
         let client = make_client();
-        let mut edge = make_edge("MAIN", 1, "A", "あ", None, None, None, None, None, vec![], None);
+        let mut edge = make_edge(
+            "MAIN",
+            1,
+            "A",
+            "あ",
+            None,
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
         edge["node"]["dateOfBirth"] = serde_json::json!({"month": 5, "day": null});
         let ch = client.process_character(&edge).unwrap();
         // day is null → as_u64() returns None → whole birthday is None
@@ -583,7 +727,19 @@ mod tests {
     #[test]
     fn test_process_character_id_zero_when_missing() {
         let client = make_client();
-        let mut edge = make_edge("MAIN", 0, "A", "あ", None, None, None, None, None, vec![], None);
+        let mut edge = make_edge(
+            "MAIN",
+            0,
+            "A",
+            "あ",
+            None,
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
         edge["node"].as_object_mut().unwrap().remove("id");
         let ch = client.process_character(&edge).unwrap();
         assert_eq!(ch.id, "0");
@@ -592,7 +748,19 @@ mod tests {
     #[test]
     fn test_process_character_no_role_defaults_to_side() {
         let client = make_client();
-        let mut edge = make_edge("MAIN", 1, "A", "あ", None, None, None, None, None, vec![], None);
+        let mut edge = make_edge(
+            "MAIN",
+            1,
+            "A",
+            "あ",
+            None,
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
         edge.as_object_mut().unwrap().remove("role");
         let ch = client.process_character(&edge).unwrap();
         // role_raw defaults to "BACKGROUND" when missing → maps to "side"
@@ -602,10 +770,25 @@ mod tests {
     #[test]
     fn test_process_character_description_with_anilist_spoilers() {
         let client = make_client();
-        let edge = make_edge("MAIN", 1, "A", "あ", None, None, None, None, Some("Visible text ~!hidden spoiler!~ more text"), vec![], None);
+        let edge = make_edge(
+            "MAIN",
+            1,
+            "A",
+            "あ",
+            None,
+            None,
+            None,
+            None,
+            Some("Visible text ~!hidden spoiler!~ more text"),
+            vec![],
+            None,
+        );
         let ch = client.process_character(&edge).unwrap();
         // process_character stores raw description; spoiler stripping happens in content_builder
-        assert_eq!(ch.description.unwrap(), "Visible text ~!hidden spoiler!~ more text");
+        assert_eq!(
+            ch.description.unwrap(),
+            "Visible text ~!hidden spoiler!~ more text"
+        );
     }
 
     // ── GraphQL query structure tests ──
@@ -646,9 +829,45 @@ mod tests {
     fn test_role_categorization_all_types() {
         let client = make_client();
         let edges = vec![
-            make_edge("MAIN", 1, "Main Char", "主人公", None, None, None, None, None, vec![], None),
-            make_edge("SUPPORTING", 2, "Support Char", "サポート", None, None, None, None, None, vec![], None),
-            make_edge("BACKGROUND", 3, "BG Char", "背景", None, None, None, None, None, vec![], None),
+            make_edge(
+                "MAIN",
+                1,
+                "Main Char",
+                "主人公",
+                None,
+                None,
+                None,
+                None,
+                None,
+                vec![],
+                None,
+            ),
+            make_edge(
+                "SUPPORTING",
+                2,
+                "Support Char",
+                "サポート",
+                None,
+                None,
+                None,
+                None,
+                None,
+                vec![],
+                None,
+            ),
+            make_edge(
+                "BACKGROUND",
+                3,
+                "BG Char",
+                "背景",
+                None,
+                None,
+                None,
+                None,
+                None,
+                vec![],
+                None,
+            ),
         ];
 
         let mut char_data = CharacterData::new();
@@ -712,13 +931,17 @@ mod tests {
 
         // Parse entries the same way the client does
         let mut entries = Vec::new();
-        let lists = response_json["data"]["MediaListCollection"]["lists"].as_array().unwrap();
+        let lists = response_json["data"]["MediaListCollection"]["lists"]
+            .as_array()
+            .unwrap();
         for list in lists {
             let list_entries = list["entries"].as_array().unwrap();
             for entry in list_entries {
                 let media = &entry["media"];
                 let id = media["id"].as_u64().unwrap_or(0);
-                if id == 0 { continue; }
+                if id == 0 {
+                    continue;
+                }
 
                 let title_data = &media["title"];
                 let title_native = title_data["native"].as_str().unwrap_or("").to_string();
@@ -793,12 +1016,16 @@ mod tests {
                 }
             }
         });
-        let lists = response_json["data"]["MediaListCollection"]["lists"].as_array().unwrap();
+        let lists = response_json["data"]["MediaListCollection"]["lists"]
+            .as_array()
+            .unwrap();
         let mut entries = Vec::new();
         for list in lists {
             for entry in list["entries"].as_array().unwrap() {
                 let id = entry["media"]["id"].as_u64().unwrap_or(0);
-                if id == 0 { continue; }
+                if id == 0 {
+                    continue;
+                }
                 entries.push(id);
             }
         }
@@ -861,7 +1088,8 @@ mod tests {
         });
         let media = &response["data"]["Media"];
         let title_data = &media["title"];
-        let title = title_data["native"].as_str()
+        let title = title_data["native"]
+            .as_str()
             .or_else(|| title_data["romaji"].as_str())
             .or_else(|| title_data["english"].as_str())
             .unwrap_or("");
@@ -886,7 +1114,8 @@ mod tests {
             }
         });
         let title_data = &response["data"]["Media"]["title"];
-        let title = title_data["native"].as_str()
+        let title = title_data["native"]
+            .as_str()
             .or_else(|| title_data["romaji"].as_str())
             .or_else(|| title_data["english"].as_str())
             .unwrap_or("");
@@ -901,8 +1130,16 @@ mod tests {
         let page2 = serde_json::json!({
             "data": {"Media": {"characters": {"pageInfo": {"hasNextPage": false, "currentPage": 2}, "edges": []}}}
         });
-        assert!(page1["data"]["Media"]["characters"]["pageInfo"]["hasNextPage"].as_bool().unwrap());
-        assert!(!page2["data"]["Media"]["characters"]["pageInfo"]["hasNextPage"].as_bool().unwrap());
+        assert!(
+            page1["data"]["Media"]["characters"]["pageInfo"]["hasNextPage"]
+                .as_bool()
+                .unwrap()
+        );
+        assert!(
+            !page2["data"]["Media"]["characters"]["pageInfo"]["hasNextPage"]
+                .as_bool()
+                .unwrap()
+        );
     }
 
     // ── Full character edge processing from realistic API response ──
@@ -938,7 +1175,10 @@ mod tests {
         assert_eq!(ch.age, Some("18".to_string()));
         assert_eq!(ch.birthday, Some(vec![12, 14]));
         assert_eq!(ch.blood_type, Some("A".to_string()));
-        assert!(ch.description.unwrap().contains("~!He discovers time travel!~"));
+        assert!(ch
+            .description
+            .unwrap()
+            .contains("~!He discovers time travel!~"));
         assert_eq!(ch.aliases, vec!["Hououin Kyouma", "Okarin"]);
         assert!(ch.image_url.unwrap().contains("anilist"));
     }
@@ -982,13 +1222,18 @@ mod tests {
 
     #[test]
     fn test_title_preference_english_only() {
-        let title_data = serde_json::json!({"native": null, "romaji": "", "english": "Attack on Titan"});
+        let title_data =
+            serde_json::json!({"native": null, "romaji": "", "english": "Attack on Titan"});
         let native = title_data["native"].as_str().unwrap_or("");
         let romaji = title_data["romaji"].as_str().unwrap_or("");
         let english = title_data["english"].as_str().unwrap_or("");
-        let title = if !native.is_empty() { native.to_string() }
-            else if !romaji.is_empty() { romaji.to_string() }
-            else { english.to_string() };
+        let title = if !native.is_empty() {
+            native.to_string()
+        } else if !romaji.is_empty() {
+            romaji.to_string()
+        } else {
+            english.to_string()
+        };
         assert_eq!(title, "Attack on Titan");
     }
 
@@ -997,7 +1242,19 @@ mod tests {
     #[test]
     fn test_process_character_gender_empty_string() {
         let client = make_client();
-        let edge = make_edge("MAIN", 1, "A", "あ", Some(""), None, None, None, None, vec![], None);
+        let edge = make_edge(
+            "MAIN",
+            1,
+            "A",
+            "あ",
+            Some(""),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
         let ch = client.process_character(&edge).unwrap();
         // Empty string → chars().next() returns None → sex is None
         assert!(ch.sex.is_none());
@@ -1007,7 +1264,19 @@ mod tests {
     fn test_process_character_gender_case_insensitive() {
         let client = make_client();
         // "FEMALE" should still map to "f" (lowercased first char)
-        let edge = make_edge("MAIN", 1, "A", "あ", Some("FEMALE"), None, None, None, None, vec![], None);
+        let edge = make_edge(
+            "MAIN",
+            1,
+            "A",
+            "あ",
+            Some("FEMALE"),
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
         let ch = client.process_character(&edge).unwrap();
         assert_eq!(ch.sex, Some("f".to_string()));
     }
@@ -1017,7 +1286,19 @@ mod tests {
     #[test]
     fn test_process_character_age_empty_string() {
         let client = make_client();
-        let edge = make_edge("MAIN", 1, "A", "あ", None, Some(serde_json::json!("")), None, None, None, vec![], None);
+        let edge = make_edge(
+            "MAIN",
+            1,
+            "A",
+            "あ",
+            None,
+            Some(serde_json::json!("")),
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
         let ch = client.process_character(&edge).unwrap();
         // Empty string is still Some("")
         assert_eq!(ch.age, Some("".to_string()));
@@ -1029,7 +1310,19 @@ mod tests {
     #[test]
     fn test_process_character_birthday_month_zero() {
         let client = make_client();
-        let mut edge = make_edge("MAIN", 1, "A", "あ", None, None, None, None, None, vec![], None);
+        let mut edge = make_edge(
+            "MAIN",
+            1,
+            "A",
+            "あ",
+            None,
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
         edge["node"]["dateOfBirth"] = serde_json::json!({"month": 0, "day": 15});
         let ch = client.process_character(&edge).unwrap();
         // month=0 is technically valid as u64, so birthday is Some([0, 15])
@@ -1044,9 +1337,13 @@ mod tests {
         let native = title_data["native"].as_str().unwrap_or("");
         let romaji = title_data["romaji"].as_str().unwrap_or("");
         let english = title_data["english"].as_str().unwrap_or("");
-        let title = if !native.is_empty() { native.to_string() }
-            else if !romaji.is_empty() { romaji.to_string() }
-            else { english.to_string() };
+        let title = if !native.is_empty() {
+            native.to_string()
+        } else if !romaji.is_empty() {
+            romaji.to_string()
+        } else {
+            english.to_string()
+        };
         assert_eq!(title, "");
     }
 
@@ -1058,9 +1355,13 @@ mod tests {
         let native = title_data["native"].as_str().unwrap_or("");
         let romaji = title_data["romaji"].as_str().unwrap_or("");
         let english = title_data["english"].as_str().unwrap_or("");
-        let title = if !native.is_empty() { native.to_string() }
-            else if !romaji.is_empty() { romaji.to_string() }
-            else { english.to_string() };
+        let title = if !native.is_empty() {
+            native.to_string()
+        } else if !romaji.is_empty() {
+            romaji.to_string()
+        } else {
+            english.to_string()
+        };
         assert_eq!(title, "");
     }
 
@@ -1069,8 +1370,21 @@ mod tests {
     #[test]
     fn test_process_character_alternatives_with_nulls() {
         let client = make_client();
-        let mut edge = make_edge("MAIN", 1, "A", "あ", None, None, None, None, None, vec![], None);
-        edge["node"]["name"]["alternative"] = serde_json::json!([null, "Valid", null, "Also Valid"]);
+        let mut edge = make_edge(
+            "MAIN",
+            1,
+            "A",
+            "あ",
+            None,
+            None,
+            None,
+            None,
+            None,
+            vec![],
+            None,
+        );
+        edge["node"]["name"]["alternative"] =
+            serde_json::json!([null, "Valid", null, "Also Valid"]);
         let ch = client.process_character(&edge).unwrap();
         // filter_map(|v| v.as_str()) skips nulls
         assert_eq!(ch.aliases, vec!["Valid", "Also Valid"]);
