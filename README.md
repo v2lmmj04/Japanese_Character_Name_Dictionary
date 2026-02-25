@@ -65,6 +65,70 @@ docker run -d -p 9721:3000 yomitan-dict-builder
 
 Visit **http://localhost:9721** in your browser (or `http://localhost:3000` if running with cargo directly).
 
+### Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `3000` | Port the server listens on inside the container (or bare metal) |
+| `BASE_URL` | `http://127.0.0.1:{PORT}` | Public URL used in Yomitan auto-update index URLs. Set this to your domain. |
+| `CACHE_DIR` | `./cache` (debug) / `/var/cache/yomitan` (release) | Directory for the disk-backed image cache |
+| `RUST_LOG` | `info` | Log level filter (e.g. `debug`, `warn`, `info,yomitan_dict_builder=debug`) |
+
+### Deploying on a Server with a Custom Domain
+
+The auto-update feature works by encoding all dictionary settings into the URL. Yomitan stores the index URL and re-fetches it on update checks, so the server needs to be reachable at a stable URL.
+
+**1. Set `BASE_URL` to your public domain:**
+
+```bash
+# Bare metal
+BASE_URL=https://dict.example.com PORT=8080 cargo run --release
+
+# Docker
+docker run -d \
+  -p 80:3000 \
+  -e BASE_URL=https://dict.example.com \
+  -v yomitan-cache:/var/cache/yomitan \
+  yomitan-dict-builder
+```
+
+**2. With docker-compose and a reverse proxy (nginx, Caddy, etc.):**
+
+```yaml
+# docker-compose.yml
+services:
+  yomitan-dict-builder:
+    build: .
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - BASE_URL=https://dict.example.com
+    volumes:
+      - cache-data:/var/cache/yomitan
+    restart: unless-stopped
+
+volumes:
+  cache-data:
+```
+
+Then point your reverse proxy at `localhost:3000`. Example Caddy config:
+
+```
+dict.example.com {
+    reverse_proxy localhost:3000
+}
+```
+
+**3. How it works:**
+
+- User imports a dictionary via the index URL, e.g. `https://dict.example.com/api/yomitan-index?vndb_user=foo&spoiler_level=1`
+- Yomitan stores that full URL internally
+- On update check, Yomitan re-fetches the index → the server returns a `downloadUrl` with the same query params pointing at `BASE_URL`
+- Yomitan downloads the fresh ZIP → dictionary is regenerated with the original settings
+- The URL IS the configuration. No accounts, no server-side state.
+
+The image cache (`/var/cache/yomitan`) persists downloaded character portraits across restarts. Mount it as a Docker volume to avoid re-downloading images on container recreation.
+
 ### Usage
 
 1. Select source (VNDB or AniList)

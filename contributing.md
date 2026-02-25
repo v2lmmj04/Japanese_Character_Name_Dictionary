@@ -6,3 +6,13 @@
 * There is even an agents.md file you can point your agent at to learn how the codebase works, so even the worst codebase can.
 
 In the modern day of AI coding there is no reason you should be creating issues on such an incredibly simple codebase, AI should be able to add anything you want! <3
+
+# Reviews
+
+Please ask your AI agent in a new session to roast your diff between your current branch and main.
+
+Then tell it to fix all those issues.
+
+Then repeat until the suggestions become nonsensical.
+
+Then read it with your human eyes and make sure it's good.

@@ -98,6 +98,29 @@ Username/Media ID
 | `GET /api/yomitan-dict?vndb_user=X&anilist_user=Y&spoiler_level=0` | Username-based ZIP generation |
 | `GET /api/yomitan-index?...` | Lightweight index.json metadata (for Yomitan update checks) |
 
+### Query Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `vndb_user` | string | — | VNDB username or profile URL |
+| `anilist_user` | string | — | AniList username |
+| `source` | string | — | `"vndb"` or `"anilist"` (single-media mode) |
+| `id` | string | — | Media ID, e.g. `v17` or `9253` (single-media mode) |
+| `spoiler_level` | u8 | `0` | 0 = none, 1 = minor, 2 = full |
+| `media_type` | string | `"ANIME"` | `"ANIME"` or `"MANGA"` (AniList only) |
+| `honorifics` | bool | `true` | Generate honorific suffix entries (さん, ちゃん, 先生, etc.) |
+
+### URL-as-Settings Pattern
+
+All dictionary options (usernames, spoiler level, source, media type) are encoded as query parameters in the URL. This is intentional — the URLs themselves act as persistent settings for Yomitan's update mechanism:
+
+1. User imports a dictionary via the index URL, e.g. `http://host/api/yomitan-index?vndb_user=foo&spoiler_level=1`
+2. Yomitan stores that full index URL internally
+3. On update check, Yomitan re-fetches the index URL → the `generate_index` handler reconstructs a `downloadUrl` with all the same query params baked in
+4. Yomitan downloads the fresh ZIP from that URL → dictionary is regenerated with the original settings
+
+This means changing a setting (e.g. spoiler level) requires re-importing with a new URL. There is no server-side state or user accounts — the URL IS the configuration. When adding new options, they must be added to the `DictQuery` struct and threaded through `generate_index`'s `downloadUrl` construction so they survive the update cycle.
+
 ## Critical Implementation Details
 
 Things that are easy to break and hard to debug:
@@ -112,7 +135,7 @@ Things that are easy to break and hard to debug:
 
 5. **Entry deduplication**: All term entries are deduplicated via `HashSet<String>` on the term+reading key. Family name matching an alias → only one entry.
 
-6. **Characters without `name_original` are skipped**: No Japanese name = no dictionary entries.
+6. **Characters without `name_original` are logged and skipped**: No Japanese name = no dictionary entries. A `warn!` log is emitted with the character's ID and romanized name.
 
 7. **Rate limits**: VNDB 200ms between paginated requests (200 req/5min). AniList 300ms (90 req/min).
 
@@ -121,6 +144,8 @@ Things that are easy to break and hard to debug:
 9. **Revision field**: Must be random on every generation (triggers Yomitan update detection). Not deterministic.
 
 10. **VNDB user input parsing**: Users paste URLs like `https://vndb.org/u306587`. Must extract user ID from URL before API calls. See `vndb_client.rs::parse_user_input()`.
+
+11. **Port is configurable**: Via `PORT` env var, defaults to 3000. `BASE_URL` env var controls auto-update URLs and defaults to `http://127.0.0.1:{PORT}`.
 
 ## Honorific Suffixes (15 total)
 

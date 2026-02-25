@@ -9,3 +9,6 @@ yomitan-dict-builder/target/
 *.swo
 *~
 .vscode/
+
+# Kiro
+.kiro/
