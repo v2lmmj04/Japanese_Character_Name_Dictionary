@@ -23,7 +23,11 @@ A web application that generates **Yomitan-compatible character dictionaries** f
 
 If you are capable to, please deploy this yourself to save me bandwidth.
 
-You can do this by git cloning this and then running 'docker compose up'.
+You can do this with a single command:
+
+```bash
+podman run -d -p 3000:3000 -e HOST=0.0.0.0 ghcr.io/bee-san/japanese_character_name_dictionary:latest
+```
 
 The auto-updating requires the URL to be the same and to always be online. If it's not online, the dict won't update. But Yomitan etc will just retry it so it's not a big deal.
 
@@ -46,26 +50,71 @@ cargo run --release
 
 Visit **http://localhost:3000** in your browser.
 
-### Docker
+### Podman / Docker
 
-The easiest way to run the application — no Rust toolchain required.
+The easiest way to run the application — no Rust toolchain required. A prebuilt image is published to GHCR on every push to `main`. We recommend [Podman](https://podman.io/) (rootless, daemonless, and supports auto-updates), but Docker works too.
 
-**Using Docker Compose (recommended):**
+**Using Podman Compose (recommended):**
 
-```bash
-docker compose up -d
+```yaml
+# docker-compose.yml
+services:
+  yomitan-dict-builder:
+    image: ghcr.io/bee-san/japanese_character_name_dictionary:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - HOST=0.0.0.0
+      - BASE_URL=http://localhost:3000
+    volumes:
+      - cache-data:/var/cache/yomitan
+    labels:
+      - "io.containers.autoupdate=registry"
+    restart: unless-stopped
+
+volumes:
+  cache-data:
 ```
 
-The app will be available at **http://localhost:9721**.
-
-**Using Docker directly:**
-
 ```bash
-docker build -t yomitan-dict-builder .
-docker run -d -p 9721:3000 yomitan-dict-builder
+podman compose up -d
 ```
 
-Visit **http://localhost:9721** in your browser (or `http://localhost:3000` if running with cargo directly).
+The app will be available at **http://localhost:3000**.
+
+To manually update to the latest image:
+
+```bash
+podman compose pull
+podman compose up -d
+```
+
+**Using Podman directly:**
+
+```bash
+podman run -d \
+  --name yomitan-dict-builder \
+  -p 3000:3000 \
+  -e HOST=0.0.0.0 \
+  -e BASE_URL=http://localhost:3000 \
+  -v yomitan-cache:/var/cache/yomitan \
+  --label io.containers.autoupdate=registry \
+  ghcr.io/bee-san/japanese_character_name_dictionary:latest
+```
+
+**Auto-updates with Podman:**
+
+Podman can automatically check GHCR for new images and restart the container:
+
+```bash
+# Enable the auto-update timer (checks daily)
+systemctl --user enable --now podman-auto-update.timer
+
+# Or check manually
+podman auto-update --dry-run  # preview what would update
+podman auto-update             # pull and restart
+```
 
 ### Environment Variables
 
@@ -89,28 +138,36 @@ BASE_URL=https://dict.example.com PORT=8080 cargo run --release
 # Docker
 docker run -d \
   -p 80:3000 \
+  -e HOST=0.0.0.0 \
   -e BASE_URL=https://dict.example.com \
   -v yomitan-cache:/var/cache/yomitan \
-  yomitan-dict-builder
+  ghcr.io/bee-san/japanese_character_name_dictionary:latest
 ```
 
-**2. With docker-compose and a reverse proxy (nginx, Caddy, etc.):**
+**2. With Podman Compose and a reverse proxy (Caddy, nginx, etc.):**
 
 ```yaml
 # docker-compose.yml
 services:
   yomitan-dict-builder:
-    build: .
-    ports:
-      - "127.0.0.1:3000:3000"
+    image: ghcr.io/bee-san/japanese_character_name_dictionary:latest
+    network_mode: host
     environment:
+      - PORT=3000
+      - HOST=127.0.0.1
       - BASE_URL=https://dict.example.com
     volumes:
       - cache-data:/var/cache/yomitan
+    labels:
+      - "io.containers.autoupdate=registry"
     restart: unless-stopped
 
 volumes:
   cache-data:
+```
+
+```bash
+podman compose up -d
 ```
 
 Then point your reverse proxy at `localhost:3000`. Example Caddy config:
