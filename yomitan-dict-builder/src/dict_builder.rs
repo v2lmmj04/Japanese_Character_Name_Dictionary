@@ -1140,9 +1140,9 @@ mod tests {
         let mut builder = DictBuilder::new(0, None, "Test".to_string(), true);
 
         // Generate enough entries to force multiple term banks.
-        // Each character with a two-part name + aliases + honorifics produces many entries.
-        // We need > 10,000 entries total.
-        for i in 0..200 {
+        // With ~170 honorific suffixes, each character produces ~2000+ entries,
+        // so only a handful of characters are needed to exceed 10,000.
+        for i in 0..10 {
             let ch = Character {
                 id: format!("c{}", i),
                 name: format!("Given{} Family{}", i, i),

@@ -1,6 +1,9 @@
 # Rust build artifacts
 yomitan-dict-builder/target/
 
+# Runtime cache (images, zips, api responses)
+yomitan-dict-builder/cache/
+
 # macOS
 .DS_Store
 

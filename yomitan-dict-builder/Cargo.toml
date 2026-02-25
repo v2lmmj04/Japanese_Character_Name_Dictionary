@@ -22,3 +22,11 @@ moka = { version = "0.12", features = ["future"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 urlencoding = "2"
+tower_governor = { version = "0.4", features = ["axum", "tracing"] }
+# Release: optimize for speed, strip debug info, single codegen unit
+# for better inlining (especially image processing hot paths).
+[profile.release]
+opt-level = 3
+lto = "fat"
+strip = true
+codegen-units = 1
