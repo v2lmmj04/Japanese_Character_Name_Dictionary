@@ -9,9 +9,7 @@ use axum::{
     Router,
 };
 use futures::stream::{self, StreamExt};
-use moka::future::Cache;
-use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -25,7 +23,6 @@ use tracing::{info, warn};
 mod anilist_client;
 mod content_builder;
 mod dict_builder;
-mod disk_cache;
 mod image_handler;
 mod kana;
 mod models;
@@ -37,9 +34,7 @@ mod anilist_name_test_data;
 
 use anilist_client::AnilistClient;
 use dict_builder::DictBuilder;
-use disk_cache::{DiskDataCache, DiskImageCache};
 use image_handler::ImageHandler;
-use models::CharacterData;
 use models::UserMediaEntry;
 use vndb_client::VndbClient;
 
@@ -62,16 +57,6 @@ fn static_dir() -> std::path::PathBuf {
 /// Maps token to (zip_bytes, creation_time).
 type DownloadStore = Arc<Mutex<HashMap<String, (Vec<u8>, std::time::Instant)>>>;
 
-/// Disk-backed image cache entry: (resized_bytes, extension).
-type ImageCacheEntry = (Vec<u8>, String);
-
-/// 14-day TTL for single-media ZIP disk cache.
-const DISK_ZIP_TTL_SECS: u64 = 14 * 24 * 3600;
-
-/// 21-day TTL for API character data disk cache.
-/// Matches user update cycle (1-3 weeks). Character data is stable.
-const DISK_API_TTL_SECS: u64 = 21 * 24 * 3600;
-
 /// Interval for cleaning up expired download tokens.
 const DOWNLOAD_CLEANUP_INTERVAL_SECS: u64 = 60;
 
@@ -83,48 +68,10 @@ struct AppState {
     downloads: DownloadStore,
     /// Shared HTTP client for connection pooling across all API calls.
     http_client: reqwest::Client,
-    /// In-memory image cache: URL → (resized_bytes, extension).
-    /// Weighted by byte size with 200MB cap, 24h TTL.
-    /// Backed by disk cache for persistence across restarts.
-    image_cache: Cache<String, ImageCacheEntry>,
-    /// Disk-backed image cache with 30-day TTL. Survives process restarts.
-    disk_image_cache: DiskImageCache,
-    /// Disk-backed ZIP cache for single-media dictionaries (14-day TTL).
-    /// Single-media ZIPs are deterministic and shareable across users.
-    /// Username-based ZIPs are NOT cached here — they change with the user's playing list.
-    disk_zip_cache: DiskDataCache,
-    /// Disk-backed API response cache for per-media character data (21-day TTL).
-    /// Caches (CharacterData + title) JSON so requests skip API calls
-    /// for media that was recently fetched by anyone. This is the main
-    /// multiplier for username-based requests — shared across all users.
-    disk_api_cache: DiskDataCache,
 }
 
 impl AppState {
-    async fn new() -> Self {
-        let cache_dir = std::env::var("CACHE_DIR")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| {
-                // Default: ./cache in debug, /var/cache/yomitan in release
-                if cfg!(debug_assertions) {
-                    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("cache")
-                } else {
-                    std::path::PathBuf::from("/var/cache/yomitan")
-                }
-            });
-
-        let disk_image_cache = DiskImageCache::new(cache_dir.join("images")).await;
-        // TESTING: commenting out disk cache cleanup to test if caching causes problems
-        // disk_image_cache.spawn_cleanup_task();
-
-        let disk_zip_cache = DiskDataCache::new(cache_dir.join("zips"), DISK_ZIP_TTL_SECS).await;
-        // TESTING: commenting out disk cache cleanup to test if caching causes problems
-        // disk_zip_cache.spawn_cleanup_task();
-
-        let disk_api_cache = DiskDataCache::new(cache_dir.join("api"), DISK_API_TTL_SECS).await;
-        // TESTING: commenting out disk cache cleanup to test if caching causes problems
-        // disk_api_cache.spawn_cleanup_task();
-
+    fn new() -> Self {
         let downloads: DownloadStore = Arc::new(Mutex::new(HashMap::new()));
 
         // Spawn periodic cleanup for download tokens
@@ -158,18 +105,6 @@ impl AppState {
                 .timeout(std::time::Duration::from_secs(30))
                 .build()
                 .expect("Failed to build HTTP client"),
-            // Image cache: weighted by byte size, 200MB cap, 24h TTL.
-            // Disk cache is the real store — this is just a hot-path optimization.
-            image_cache: Cache::builder()
-                .weigher(|_key: &String, value: &ImageCacheEntry| -> u32 {
-                    (value.0.len() + value.1.len() + 64).min(u32::MAX as usize) as u32
-                })
-                .max_capacity(200 * 1024 * 1024) // 200MB — safe for 4GB RAM
-                .time_to_live(std::time::Duration::from_secs(86400))
-                .build(),
-            disk_image_cache,
-            disk_zip_cache,
-            disk_api_cache,
         }
     }
 }
@@ -219,23 +154,6 @@ fn default_honorifics() -> bool {
     true
 }
 
-/// Build a cache key for single-media ZIP disk caching.
-fn zip_cache_key(
-    source: &str,
-    id: &str,
-    spoiler_level: u8,
-    honorifics: bool,
-    media_type: &str,
-) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(source);
-    hasher.update(id);
-    hasher.update(spoiler_level.to_string());
-    hasher.update(honorifics.to_string());
-    hasher.update(media_type);
-    format!("{:x}", hasher.finalize())
-}
-
 /// Get the base URL for auto-update URLs.
 /// Reads from BASE_URL env var, defaults to http://127.0.0.1:3000.
 fn base_url() -> String {
@@ -258,7 +176,7 @@ async fn main() {
         )
         .init();
 
-    let state = AppState::new().await;
+    let state = AppState::new();
 
     // Rate limiting: strict for expensive generation endpoints
     let generate_governor = GovernorConfigBuilder::default()
@@ -301,6 +219,7 @@ async fn main() {
         .route("/api/user-lists", get(fetch_user_lists))
         .route("/api/download", get(download_zip))
         .route("/api/yomitan-index", get(generate_index))
+        .route("/api/build-info", get(build_info))
         .layer(GovernorLayer {
             config: std::sync::Arc::new(api_governor),
         });
@@ -340,6 +259,11 @@ async fn serve_index() -> impl IntoResponse {
             .into_response(),
         Err(_) => (StatusCode::NOT_FOUND, "index.html not found").into_response(),
     }
+}
+
+async fn build_info() -> impl IntoResponse {
+    let timestamp = env!("BUILD_TIMESTAMP");
+    axum::Json(serde_json::json!({ "build_time": timestamp }))
 }
 
 // === Fetch user lists endpoint ===
@@ -498,31 +422,12 @@ async fn download_zip(
     }
 }
 
-/// Download, resize, and cache a single character image.
+/// Download and resize a single character image.
 /// Returns (resized_bytes, extension) or None on failure.
-///
-/// Lookup order: moka (memory) → disk → HTTP.
-/// On HTTP fetch, writes to both moka and disk.
-/// On disk hit, promotes to moka for fast subsequent access.
-async fn fetch_and_cache_image(
+async fn fetch_image(
     url: &str,
     http_client: &reqwest::Client,
-    image_cache: &Cache<String, ImageCacheEntry>,
-    _disk_cache: &DiskImageCache,
-) -> Option<ImageCacheEntry> {
-    // Tier 1: in-memory cache
-    if let Some(cached) = image_cache.get(url).await {
-        return Some(cached);
-    }
-
-    // TESTING: commenting out disk cache reads to test if caching causes problems
-    // if let Some((bytes, ext)) = disk_cache.get(url).await {
-    //     let entry: ImageCacheEntry = (bytes, ext);
-    //     image_cache.insert(url.to_string(), entry.clone()).await;
-    //     return Some(entry);
-    // }
-
-    // Tier 3: HTTP download with per-image timeout
+) -> Option<(Vec<u8>, String)> {
     let download_future = async {
         let response = http_client.get(url).send().await.ok()?;
         if response.status() != 200 {
@@ -545,23 +450,14 @@ async fn fetch_and_cache_image(
     // Resize to thumbnail + convert to WebP
     let (resized, ext) = ImageHandler::resize_image(&raw_bytes);
 
-    let entry: ImageCacheEntry = (resized, ext.to_string());
-
-    // Write to in-memory cache only
-    image_cache.insert(url.to_string(), entry.clone()).await;
-    // TESTING: commenting out disk cache writes to test if caching causes problems
-    // disk_cache.put(url, &entry.0, &entry.1).await;
-
-    Some(entry)
+    Some((resized, ext.to_string()))
 }
 
-/// Download images for all characters concurrently, with resize + caching.
+/// Download images for all characters concurrently, with resize.
 /// Concurrency is capped to respect API rate limits.
 async fn download_images_concurrent(
     char_data: &mut models::CharacterData,
     http_client: &reqwest::Client,
-    image_cache: &Cache<String, ImageCacheEntry>,
-    disk_cache: &DiskImageCache,
     concurrency: usize,
 ) {
     // Collect (index_in_flat_list, url) pairs
@@ -572,13 +468,11 @@ async fn download_images_concurrent(
         .collect();
 
     // Download concurrently
-    let results: Vec<(usize, Option<ImageCacheEntry>)> = stream::iter(urls)
+    let results: Vec<(usize, Option<(Vec<u8>, String)>)> = stream::iter(urls)
         .map(|(idx, url)| {
             let client = http_client.clone();
-            let cache = image_cache.clone();
-            let disk = disk_cache.clone();
             async move {
-                let result = fetch_and_cache_image(&url, &client, &cache, &disk).await;
+                let result = fetch_image(&url, &client).await;
                 (idx, result)
             }
         })
@@ -598,18 +492,6 @@ async fn download_images_concurrent(
     }
 }
 
-/// Cached API response: character data + resolved title for a single media.
-#[derive(Serialize, Deserialize)]
-struct CachedMediaCharacters {
-    title: String,
-    char_data: CharacterData,
-}
-
-/// Build a cache key for per-media API response caching.
-fn api_cache_key(source: &str, media_id: &str) -> String {
-    format!("api:{}:{}", source, media_id)
-}
-
 // === Core function: Generate dictionary from usernames ===
 
 async fn generate_dict_from_usernames(
@@ -621,11 +503,6 @@ async fn generate_dict_from_usernames(
     state: &AppState,
 ) -> Result<Vec<u8>, String> {
     let spoiler_level = spoiler_level.min(2);
-
-    // No ZIP caching for username-based requests — the user's playing list
-    // changes over time, making each combination unique. Instead we rely on
-    // per-media API response caching (disk_api_cache) and image caching
-    // (disk_image_cache) to make regeneration fast.
 
     // Step 1: Collect all media entries from user lists
     let mut media_entries: Vec<UserMediaEntry> = Vec::new();
@@ -709,75 +586,38 @@ async fn generate_dict_from_usernames(
 
         match entry.source.as_str() {
             "vndb" => {
-                let _api_key = api_cache_key("vndb", &entry.id);
+                let client = VndbClient::with_client(state.http_client.clone());
 
-                // TESTING: commenting out disk API cache to test if caching causes problems
-                // let cached =
-                //     state.disk_api_cache.get(&api_key).await.and_then(|bytes| {
-                //         serde_json::from_slice::<CachedMediaCharacters>(&bytes).ok()
-                //     });
-                let cached: Option<CachedMediaCharacters> = None;
-
-                if let Some(mut cached) = cached {
-                    // Cache hit — still need to populate image bytes from image cache
-                    download_images_concurrent(
-                        &mut cached.char_data,
-                        &state.http_client,
-                        &state.image_cache,
-                        &state.disk_image_cache,
-                        8,
-                    )
-                    .await;
-
-                    for character in cached.char_data.all_characters() {
-                        builder.add_character(character, &cached.title);
-                    }
-                } else {
-                    // Cache miss — fetch from API
-                    let client = VndbClient::with_client(state.http_client.clone());
-
-                    let title = match client.fetch_vn_title(&entry.id).await {
-                        Ok((romaji, original)) => {
-                            if !original.is_empty() {
-                                original
-                            } else {
-                                romaji
-                            }
-                        }
-                        Err(_) => game_title.clone(),
-                    };
-
-                    match client.fetch_characters(&entry.id).await {
-                        Ok(mut char_data) => {
-                            // TESTING: commenting out disk API cache writes to test if caching causes problems
-                            // let cache_entry = CachedMediaCharacters {
-                            //     title: title.clone(),
-                            //     char_data: char_data.clone(),
-                            // };
-                            // if let Ok(json) = serde_json::to_vec(&cache_entry) {
-                            //     state.disk_api_cache.put(&api_key, &json).await;
-                            // }
-
-                            download_images_concurrent(
-                                &mut char_data,
-                                &state.http_client,
-                                &state.image_cache,
-                                &state.disk_image_cache,
-                                8,
-                            )
-                            .await;
-
-                            for character in char_data.all_characters() {
-                                builder.add_character(character, &title);
-                            }
-                        }
-                        Err(e) => {
-                            warn!(vn_id = %entry.id, error = %e, "Failed to fetch VNDB characters");
+                let title = match client.fetch_vn_title(&entry.id).await {
+                    Ok((romaji, original)) => {
+                        if !original.is_empty() {
+                            original
+                        } else {
+                            romaji
                         }
                     }
+                    Err(_) => game_title.clone(),
+                };
 
-                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                match client.fetch_characters(&entry.id).await {
+                    Ok(mut char_data) => {
+                        download_images_concurrent(
+                            &mut char_data,
+                            &state.http_client,
+                            8,
+                        )
+                        .await;
+
+                        for character in char_data.all_characters() {
+                            builder.add_character(character, &title);
+                        }
+                    }
+                    Err(e) => {
+                        warn!(vn_id = %entry.id, error = %e, "Failed to fetch VNDB characters");
+                    }
                 }
+
+                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
             }
             "anilist" => {
                 let media_id: i32 = match entry.id.parse() {
@@ -794,68 +634,33 @@ async fn generate_dict_from_usernames(
                     _ => "ANIME",
                 };
 
-                let _api_key = api_cache_key("anilist", &format!("{}:{}", entry.id, media_type));
+                let client = AnilistClient::with_client(state.http_client.clone());
 
-                // TESTING: commenting out disk API cache to test if caching causes problems
-                // let cached =
-                //     state.disk_api_cache.get(&api_key).await.and_then(|bytes| {
-                //         serde_json::from_slice::<CachedMediaCharacters>(&bytes).ok()
-                //     });
-                let cached: Option<CachedMediaCharacters> = None;
+                match client.fetch_characters(media_id, media_type).await {
+                    Ok((mut char_data, media_title)) => {
+                        let title = if !media_title.is_empty() {
+                            media_title
+                        } else {
+                            game_title.clone()
+                        };
 
-                if let Some(mut cached) = cached {
-                    download_images_concurrent(
-                        &mut cached.char_data,
-                        &state.http_client,
-                        &state.image_cache,
-                        &state.disk_image_cache,
-                        6,
-                    )
-                    .await;
+                        download_images_concurrent(
+                            &mut char_data,
+                            &state.http_client,
+                            6,
+                        )
+                        .await;
 
-                    for character in cached.char_data.all_characters() {
-                        builder.add_character(character, &cached.title);
-                    }
-                } else {
-                    let client = AnilistClient::with_client(state.http_client.clone());
-
-                    match client.fetch_characters(media_id, media_type).await {
-                        Ok((mut char_data, media_title)) => {
-                            let title = if !media_title.is_empty() {
-                                media_title
-                            } else {
-                                game_title.clone()
-                            };
-
-                            // TESTING: commenting out disk API cache writes to test if caching causes problems
-                            // let cache_entry = CachedMediaCharacters {
-                            //     title: title.clone(),
-                            //     char_data: char_data.clone(),
-                            // };
-                            // if let Ok(json) = serde_json::to_vec(&cache_entry) {
-                            //     state.disk_api_cache.put(&api_key, &json).await;
-                            // }
-
-                            download_images_concurrent(
-                                &mut char_data,
-                                &state.http_client,
-                                &state.image_cache,
-                                &state.disk_image_cache,
-                                6,
-                            )
-                            .await;
-
-                            for character in char_data.all_characters() {
-                                builder.add_character(character, &title);
-                            }
-                        }
-                        Err(e) => {
-                            warn!(media_id = %entry.id, error = %e, "Failed to fetch AniList characters");
+                        for character in char_data.all_characters() {
+                            builder.add_character(character, &title);
                         }
                     }
-
-                    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+                    Err(e) => {
+                        warn!(media_id = %entry.id, error = %e, "Failed to fetch AniList characters");
+                    }
                 }
+
+                tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
             }
             _ => {
                 warn!(source = %entry.source, "Unknown source");
@@ -932,30 +737,6 @@ async fn generate_dict(
             .into_response();
     }
 
-    // TESTING: commenting out disk ZIP cache reads to test if caching causes problems
-    // let cache_key = zip_cache_key(
-    //     source,
-    //     id,
-    //     spoiler_level,
-    //     params.honorifics,
-    //     &params.media_type,
-    // );
-    // if let Some(cached) = state.disk_zip_cache.get(&cache_key).await {
-    //     return (
-    //         StatusCode::OK,
-    //         [
-    //             ("content-type", "application/zip"),
-    //             (
-    //                 "content-disposition",
-    //                 "attachment; filename=bee_characters.zip",
-    //             ),
-    //             ("access-control-allow-origin", "*"),
-    //         ],
-    //         cached,
-    //     )
-    //         .into_response();
-    // }
-
     let download_url = {
         let base = base_url();
         format!(
@@ -1014,8 +795,6 @@ async fn generate_dict(
 
     match result {
         Ok(bytes) => {
-            // TESTING: commenting out disk ZIP cache writes to test if caching causes problems
-            // state.disk_zip_cache.put(&cache_key, &bytes).await;
             (
                 StatusCode::OK,
                 [
@@ -1110,51 +889,24 @@ async fn generate_vndb_dict(
     download_url: &str,
     state: &AppState,
 ) -> Result<Vec<u8>, String> {
-    let _api_key = api_cache_key("vndb", vn_id);
+    let client = VndbClient::with_client(state.http_client.clone());
 
-    // TESTING: commenting out disk API cache to test if caching causes problems
-    // let cached = state
-    //     .disk_api_cache
-    //     .get(&api_key)
-    //     .await
-    //     .and_then(|bytes| serde_json::from_slice::<CachedMediaCharacters>(&bytes).ok());
-    let cached: Option<CachedMediaCharacters> = None;
-
-    let (mut char_data, game_title) = if let Some(cached) = cached {
-        (cached.char_data, cached.title)
+    let (romaji_title, original_title) = client
+        .fetch_vn_title(vn_id)
+        .await
+        .unwrap_or_else(|_| ("Unknown VN".to_string(), String::new()));
+    let game_title = if !original_title.is_empty() {
+        original_title
     } else {
-        let client = VndbClient::with_client(state.http_client.clone());
-
-        let (romaji_title, original_title) = client
-            .fetch_vn_title(vn_id)
-            .await
-            .unwrap_or_else(|_| ("Unknown VN".to_string(), String::new()));
-        let title = if !original_title.is_empty() {
-            original_title
-        } else {
-            romaji_title
-        };
-
-        let cd = client.fetch_characters(vn_id).await?;
-
-        // TESTING: commenting out disk API cache writes to test if caching causes problems
-        // let cache_entry = CachedMediaCharacters {
-        //     title: title.clone(),
-        //     char_data: cd.clone(),
-        // };
-        // if let Ok(json) = serde_json::to_vec(&cache_entry) {
-        //     state.disk_api_cache.put(&api_key, &json).await;
-        // }
-
-        (cd, title)
+        romaji_title
     };
 
-    // Concurrent image downloads with caching + resize
+    let mut char_data = client.fetch_characters(vn_id).await?;
+
+    // Concurrent image downloads with resize
     download_images_concurrent(
         &mut char_data,
         &state.http_client,
-        &state.image_cache,
-        &state.disk_image_cache,
         8,
     )
     .await;
@@ -1185,47 +937,20 @@ async fn generate_anilist_dict(
     download_url: &str,
     state: &AppState,
 ) -> Result<Vec<u8>, String> {
-    let _api_key = api_cache_key("anilist", &format!("{}:{}", media_id, media_type));
+    let client = AnilistClient::with_client(state.http_client.clone());
 
-    // TESTING: commenting out disk API cache to test if caching causes problems
-    // let cached = state
-    //     .disk_api_cache
-    //     .get(&api_key)
-    //     .await
-    //     .and_then(|bytes| serde_json::from_slice::<CachedMediaCharacters>(&bytes).ok());
-    let cached: Option<CachedMediaCharacters> = None;
+    let (mut char_data, media_title) = client.fetch_characters(media_id, media_type).await?;
 
-    let (mut char_data, game_title) = if let Some(cached) = cached {
-        (cached.char_data, cached.title)
+    let game_title = if !media_title.is_empty() {
+        media_title
     } else {
-        let client = AnilistClient::with_client(state.http_client.clone());
-
-        let (cd, media_title) = client.fetch_characters(media_id, media_type).await?;
-
-        let title = if !media_title.is_empty() {
-            media_title
-        } else {
-            format!("AniList {}", media_id)
-        };
-
-        // TESTING: commenting out disk API cache writes to test if caching causes problems
-        // let cache_entry = CachedMediaCharacters {
-        //     title: title.clone(),
-        //     char_data: cd.clone(),
-        // };
-        // if let Ok(json) = serde_json::to_vec(&cache_entry) {
-        //     state.disk_api_cache.put(&api_key, &json).await;
-        // }
-
-        (cd, title)
+        format!("AniList {}", media_id)
     };
 
-    // Concurrent image downloads with caching + resize
+    // Concurrent image downloads with resize
     download_images_concurrent(
         &mut char_data,
         &state.http_client,
-        &state.image_cache,
-        &state.disk_image_cache,
         6,
     )
     .await;

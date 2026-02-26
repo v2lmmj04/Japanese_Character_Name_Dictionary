@@ -28,9 +28,12 @@ yomitan-dict-builder/
 │   ├── models.rs            # Shared types: Character, CharacterData, CharacterTrait, UserMediaEntry
 │   ├── vndb_client.rs       # VNDB REST API client (user resolution, VN title, character fetch, image download)
 │   ├── anilist_client.rs    # AniList GraphQL client (user list, character fetch, image download)
-│   ├── name_parser.rs       # Japanese name parsing: kanji detection, name splitting, romaji→hiragana, katakana→hiragana, honorifics
+│   ├── kana.rs              # Low-level kana utilities: kanji detection, romaji→hiragana, katakana↔hiragana, syllable boundary handling
+│   ├── name_parser.rs       # Name handling: unified split/reading API with optional romaji hints, honorific suffixes data
 │   ├── content_builder.rs   # Yomitan structured content JSON (character popup cards), spoiler stripping
 │   ├── image_handler.rs     # Base64 data URI → raw bytes + file extension detection
+│   ├── disk_cache.rs        # On-disk caching for images (DiskImageCache) and API data (DiskDataCache) with TTL + cleanup
+│   ├── anilist_name_test_data.rs # Bulk integration tests for name splitting/reading with real AniList character data
 │   └── dict_builder.rs      # ZIP assembly: index.json, tag_bank, term_banks (chunked at 10k), img/ folder
 ├── static/
 │   └── index.html           # Single-file frontend (embedded CSS+JS)
@@ -64,12 +67,15 @@ models.rs          ← everything depends on this
 vndb_client.rs     ← uses models, reqwest, base64
 anilist_client.rs  ← uses models, reqwest, base64
     ↓
-name_parser.rs     ← standalone (no external deps beyond regex)
+kana.rs            ← standalone (no external deps beyond std)
+    ↓
+name_parser.rs     ← uses kana (unified name splitting + reading generation with optional hints, honorific data)
     ↓
 content_builder.rs ← uses models, name_parser
 image_handler.rs   ← uses base64
+disk_cache.rs      ← standalone (tokio fs, sha2 hashing, TTL-based expiry)
     ↓
-dict_builder.rs    ← uses models, name_parser, content_builder, image_handler, zip
+dict_builder.rs    ← uses models, kana, name_parser, content_builder, image_handler, zip
     ↓
 main.rs            ← orchestrates everything via Axum routes
 ```
@@ -125,7 +131,7 @@ This means changing a setting (e.g. spoiler level) requires re-importing with a 
 
 Things that are easy to break and hard to debug:
 
-1. **Name order swap**: VNDB romanized names are Western order ("Given Family"), Japanese names are Japanese order ("Family Given"). `name_parser.rs` maps `romanized_parts[0]` → family reading, `romanized_parts[1]` → given reading. This looks wrong but is correct. Do not "fix" it.
+1. **Name parsing API**: `name_parser.rs` exposes two public functions — `split_japanese_name_with_hints()` and `generate_name_readings()`. Both accept optional `first_name_hint` (given) and `last_name_hint` (family) romaji hints. When hints are `None` (VNDB path), they delegate to internal helpers that use VNDB's positional romaji mapping where `romanized_parts[0]` → family reading, `romanized_parts[1]` → given reading (Western→Japanese order swap — looks wrong but is correct). When hints are provided (AniList path), they use the hints to split spaceless native names and generate per-part readings directly. The old `split_japanese_name()` and `generate_mixed_name_readings()` still exist as private internal helpers but are not part of the public API.
 
 2. **Image flow**: Images must be downloaded and base64-encoded BEFORE passing characters to dict_builder. The builder extracts raw bytes from the base64 data URI and writes them as binary files in the ZIP's `img/` folder.
 
@@ -147,9 +153,9 @@ Things that are easy to break and hard to debug:
 
 11. **Port is configurable**: Via `PORT` env var, defaults to 3000. `BASE_URL` env var controls auto-update URLs and defaults to `http://127.0.0.1:{PORT}`.
 
-## Honorific Suffixes (15 total)
+## Honorific Suffixes (257 entries across 14 categories)
 
-さん, 様, 先生, 先輩, 後輩, 氏, 君, くん, ちゃん, たん, 坊, 殿, 博士, 社長, 部長
+Categories: Respectful/Formal, Casual/Friendly, Academic/Educational, Corporate/Business, Government/Political, Military/Law Enforcement, Religious/Spiritual, Medical, Martial Arts/Traditional, Family/Kinship, Historical/Feudal, Fantasy/Fictional, Otaku/Internet/Modern Slang, and kana-form duplicates.
 
 Applied to: family name, given name, combined name, original (with space), and each alias.
 

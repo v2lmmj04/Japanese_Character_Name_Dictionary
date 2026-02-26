@@ -17,11 +17,11 @@ regex = "1"
 uuid = { version = "1", features = ["v4"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 futures = "0.3"
-sha2 = "0.10"
-moka = { version = "0.12", features = ["future"] }
+
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 urlencoding = "2"
+chrono = "0.4"
 tower_governor = { version = "0.4", features = ["axum", "tracing"] }
 # Release: optimize for speed, strip debug info, single codegen unit
 # for better inlining (especially image processing hot paths).

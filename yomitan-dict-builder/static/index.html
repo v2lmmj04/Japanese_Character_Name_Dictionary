@@ -296,6 +296,7 @@
                     <input type="text" id="anilistUser" placeholder="e.g., https://anilist.co/user/Josh">
                 </div>
             </div>
+            <p style="text-align: center; color: #f78fb3; font-size: 0.85em; margin-top: -12px; margin-bottom: 12px;">🐝 You can do both at the same time!</p>
 
             <div class="form-group">
                 <label for="spoilerUsername">Spoiler Level:</label>
@@ -437,7 +438,19 @@
         </div>
     </div>
 
+    <div style="text-align: center; color: #ccc; font-size: 0.8em; margin-top: 8px;" id="buildInfo"></div>
+
     <script>
+        // === Fetch and display build timestamp ===
+        fetch('/api/build-info')
+            .then(r => r.json())
+            .then(data => {
+                if (data.build_time && data.build_time !== 'unknown') {
+                    document.getElementById('buildInfo').textContent = 'Build: ' + data.build_time;
+                }
+            })
+            .catch(() => {});
+
         // === Tab switching ===
         document.querySelectorAll('.tab').forEach(tab => {
             tab.addEventListener('click', () => {
