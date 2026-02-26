@@ -41,8 +41,8 @@ impl ImageHandler {
         "jpg" // fallback
     }
 
-    /// Resize raw image bytes to fit within MAX_WIDTH × MAX_HEIGHT, output as WebP.
-    /// Returns (resized_bytes, "webp") on success, or the original (bytes, detected_ext) on failure.
+    /// Resize raw image bytes to fit within MAX_WIDTH × MAX_HEIGHT, output as JPEG.
+    /// Returns (resized_bytes, "jpg") on success, or the original (bytes, detected_ext) on failure.
     pub fn resize_image(bytes: &[u8]) -> (Vec<u8>, &'static str) {
         // Try to decode the image
         let img = match image::load_from_memory(bytes) {
@@ -62,18 +62,11 @@ impl ImageHandler {
             img
         };
 
-        // Encode as WebP
+        // Encode as JPEG (widely supported by Yomitan and all browsers)
         let mut buf = Cursor::new(Vec::new());
-        match resized.write_to(&mut buf, ImageFormat::WebP) {
-            Ok(_) => (buf.into_inner(), "webp"),
-            Err(_) => {
-                // WebP encoding failed — try JPEG as fallback
-                let mut buf = Cursor::new(Vec::new());
-                match resized.write_to(&mut buf, ImageFormat::Jpeg) {
-                    Ok(_) => (buf.into_inner(), "jpg"),
-                    Err(_) => (bytes.to_vec(), Self::detect_extension(bytes)),
-                }
-            }
+        match resized.write_to(&mut buf, ImageFormat::Jpeg) {
+            Ok(_) => (buf.into_inner(), "jpg"),
+            Err(_) => (bytes.to_vec(), Self::detect_extension(bytes)),
         }
     }
 
@@ -145,11 +138,11 @@ mod tests {
         let jpeg_bytes = buf.into_inner();
 
         let (resized, ext) = ImageHandler::resize_image(&jpeg_bytes);
-        assert_eq!(ext, "webp");
+        assert_eq!(ext, "jpg");
         // Should still be valid image data
         assert!(!resized.is_empty());
-        // Verify it's actually WebP by checking RIFF header
-        assert_eq!(&resized[0..4], b"RIFF");
+        // Verify it's actually JPEG by checking magic bytes
+        assert_eq!(&resized[0..3], &[0xFF, 0xD8, 0xFF]);
     }
 
     #[test]
@@ -161,7 +154,7 @@ mod tests {
         let png_bytes = buf.into_inner();
 
         let (resized, ext) = ImageHandler::resize_image(&png_bytes);
-        assert_eq!(ext, "webp");
+        assert_eq!(ext, "jpg");
 
         // Verify the resized image dimensions are within bounds
         let resized_img = image::load_from_memory(&resized).unwrap();
@@ -258,7 +251,7 @@ mod tests {
         let png_bytes = buf.into_inner();
 
         let (resized, ext) = ImageHandler::resize_image(&png_bytes);
-        assert_eq!(ext, "webp");
+        assert_eq!(ext, "jpg");
         assert!(!resized.is_empty());
     }
 

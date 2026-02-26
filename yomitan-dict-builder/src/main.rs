@@ -470,7 +470,7 @@ async fn fetch_image(
             }
         };
 
-    // Resize to thumbnail + convert to WebP
+    // Resize to thumbnail + convert to JPEG
     let (resized, ext) = ImageHandler::resize_image(&raw_bytes);
 
     // Write to cache (fire-and-forget, non-blocking)

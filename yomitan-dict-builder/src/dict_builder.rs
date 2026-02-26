@@ -457,7 +457,7 @@ impl DictBuilder {
         let mut zip = ZipWriter::new(cursor);
         let json_options =
             SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-        // Images are already compressed (JPEG/WebP/PNG) — storing them
+        // Images are already compressed (JPEG/PNG) — storing them
         // uncompressed avoids wasting CPU for near-zero size reduction.
         let image_options =
             SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
