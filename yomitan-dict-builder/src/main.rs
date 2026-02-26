@@ -24,6 +24,7 @@ mod anilist_client;
 mod content_builder;
 mod dict_builder;
 mod image_handler;
+mod image_cache;
 mod kana;
 mod models;
 mod name_parser;
@@ -35,6 +36,7 @@ mod anilist_name_test_data;
 use anilist_client::AnilistClient;
 use dict_builder::DictBuilder;
 use image_handler::ImageHandler;
+use image_cache::ImageCache;
 use models::UserMediaEntry;
 use vndb_client::VndbClient;
 
@@ -68,6 +70,8 @@ struct AppState {
     downloads: DownloadStore,
     /// Shared HTTP client for connection pooling across all API calls.
     http_client: reqwest::Client,
+    /// On-disk image cache with popularity-based eviction.
+    image_cache: ImageCache,
 }
 
 impl AppState {
@@ -99,12 +103,24 @@ impl AppState {
             });
         }
 
+        // Image cache directory: CACHE_DIR env or ./cache (debug) / /var/cache/yomitan (release)
+        let cache_dir = std::env::var("CACHE_DIR").unwrap_or_else(|_| {
+            if cfg!(debug_assertions) {
+                "./cache".to_string()
+            } else {
+                "/var/cache/yomitan".to_string()
+            }
+        });
+        let image_cache = ImageCache::open(std::path::Path::new(&cache_dir))
+            .expect("Failed to initialize image cache");
+
         Self {
             downloads,
             http_client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(30))
                 .build()
                 .expect("Failed to build HTTP client"),
+            image_cache,
         }
     }
 }
@@ -423,11 +439,18 @@ async fn download_zip(
 }
 
 /// Download and resize a single character image.
+/// Checks the on-disk cache first; on miss, downloads, resizes, and caches.
 /// Returns (resized_bytes, extension) or None on failure.
 async fn fetch_image(
     url: &str,
     http_client: &reqwest::Client,
+    image_cache: &ImageCache,
 ) -> Option<(Vec<u8>, String)> {
+    // Check cache first
+    if let Some(hit) = image_cache.get(url).await {
+        return Some(hit);
+    }
+
     let download_future = async {
         let response = http_client.get(url).send().await.ok()?;
         if response.status() != 200 {
@@ -450,6 +473,9 @@ async fn fetch_image(
     // Resize to thumbnail + convert to WebP
     let (resized, ext) = ImageHandler::resize_image(&raw_bytes);
 
+    // Write to cache (fire-and-forget, non-blocking)
+    image_cache.put(url, &resized, ext).await;
+
     Some((resized, ext.to_string()))
 }
 
@@ -458,6 +484,7 @@ async fn fetch_image(
 async fn download_images_concurrent(
     char_data: &mut models::CharacterData,
     http_client: &reqwest::Client,
+    image_cache: &ImageCache,
     concurrency: usize,
 ) {
     // Collect (index_in_flat_list, url) pairs
@@ -471,8 +498,9 @@ async fn download_images_concurrent(
     let results: Vec<(usize, Option<(Vec<u8>, String)>)> = stream::iter(urls)
         .map(|(idx, url)| {
             let client = http_client.clone();
+            let cache = image_cache.clone();
             async move {
-                let result = fetch_image(&url, &client).await;
+                let result = fetch_image(&url, &client, &cache).await;
                 (idx, result)
             }
         })
@@ -604,6 +632,7 @@ async fn generate_dict_from_usernames(
                         download_images_concurrent(
                             &mut char_data,
                             &state.http_client,
+                            &state.image_cache,
                             8,
                         )
                         .await;
@@ -647,6 +676,7 @@ async fn generate_dict_from_usernames(
                         download_images_concurrent(
                             &mut char_data,
                             &state.http_client,
+                            &state.image_cache,
                             6,
                         )
                         .await;
@@ -907,6 +937,7 @@ async fn generate_vndb_dict(
     download_images_concurrent(
         &mut char_data,
         &state.http_client,
+        &state.image_cache,
         8,
     )
     .await;
@@ -951,6 +982,7 @@ async fn generate_anilist_dict(
     download_images_concurrent(
         &mut char_data,
         &state.http_client,
+        &state.image_cache,
         6,
     )
     .await;
