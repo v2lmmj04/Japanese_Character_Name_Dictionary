@@ -15,7 +15,6 @@ RUN cargo build --release && rm -rf src
 COPY src/ src/
 # Touch main.rs so cargo detects it changed
 RUN touch src/main.rs
-ENV CARGO_PROFILE_RELEASE_LTO=fat
 RUN cargo build --release
 
 # ---- Runtime Stage ----
