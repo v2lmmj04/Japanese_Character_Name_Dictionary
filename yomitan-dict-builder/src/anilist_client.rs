@@ -45,6 +45,38 @@ impl AnilistClient {
         Self { client }
     }
 
+    /// Parse AniList user input that may be a plain username or a profile URL.
+    /// Accepts formats like:
+    /// - `Josh` (plain username)
+    /// - `https://anilist.co/user/Josh`
+    /// - `anilist.co/user/Josh/`
+    fn parse_user_input(input: &str) -> String {
+        let input = input.trim();
+
+        if input.contains("anilist.co/") {
+            if let Some(pos) = input.rfind("anilist.co/") {
+                let after = &input[pos + "anilist.co/".len()..];
+                // Expect path like "user/Josh" or "user/Josh/"
+                let segments: Vec<&str> = after.split('/').collect();
+                if segments.len() >= 2
+                    && segments[0].eq_ignore_ascii_case("user")
+                    && !segments[1].is_empty()
+                {
+                    let username = segments[1]
+                        .split(&['?', '#'][..])
+                        .next()
+                        .unwrap_or("")
+                        .trim();
+                    if !username.is_empty() {
+                        return username.to_string();
+                    }
+                }
+            }
+        }
+
+        input.to_string()
+    }
+
     const USER_LIST_QUERY: &'static str = r#"
     query ($username: String, $type: MediaType) {
         MediaListCollection(userName: $username, type: $type, status: CURRENT) {
@@ -72,6 +104,7 @@ impl AnilistClient {
         &self,
         username: &str,
     ) -> Result<Vec<UserMediaEntry>, String> {
+        let username = Self::parse_user_input(username);
         let mut entries = Vec::new();
 
         for (media_type_gql, media_type_label) in &[("ANIME", "anime"), ("MANGA", "manga")] {
@@ -1506,5 +1539,87 @@ mod tests {
             .as_bool()
             .unwrap_or(false);
         assert!(!has_next, "Missing hasNextPage should default to false");
+    }
+
+    // === parse_user_input tests ===
+
+    #[test]
+    fn test_parse_user_input_plain_username() {
+        assert_eq!(AnilistClient::parse_user_input("Josh"), "Josh");
+    }
+
+    #[test]
+    fn test_parse_user_input_username_with_whitespace() {
+        assert_eq!(AnilistClient::parse_user_input("  Josh  "), "Josh");
+    }
+
+    #[test]
+    fn test_parse_user_input_https_url() {
+        assert_eq!(
+            AnilistClient::parse_user_input("https://anilist.co/user/Josh"),
+            "Josh"
+        );
+    }
+
+    #[test]
+    fn test_parse_user_input_http_url() {
+        assert_eq!(
+            AnilistClient::parse_user_input("http://anilist.co/user/Josh"),
+            "Josh"
+        );
+    }
+
+    #[test]
+    fn test_parse_user_input_bare_domain() {
+        assert_eq!(
+            AnilistClient::parse_user_input("anilist.co/user/Josh"),
+            "Josh"
+        );
+    }
+
+    #[test]
+    fn test_parse_user_input_trailing_slash() {
+        assert_eq!(
+            AnilistClient::parse_user_input("https://anilist.co/user/Josh/"),
+            "Josh"
+        );
+    }
+
+    #[test]
+    fn test_parse_user_input_url_with_query() {
+        assert_eq!(
+            AnilistClient::parse_user_input("https://anilist.co/user/Josh?tab=animelist"),
+            "Josh"
+        );
+    }
+
+    #[test]
+    fn test_parse_user_input_url_with_fragment() {
+        assert_eq!(
+            AnilistClient::parse_user_input("https://anilist.co/user/Josh#top"),
+            "Josh"
+        );
+    }
+
+    #[test]
+    fn test_parse_user_input_url_with_whitespace() {
+        assert_eq!(
+            AnilistClient::parse_user_input("  https://anilist.co/user/Josh  "),
+            "Josh"
+        );
+    }
+
+    #[test]
+    fn test_parse_user_input_non_user_url_passthrough() {
+        // anime URL is not a user URL — should pass through as-is
+        assert_eq!(
+            AnilistClient::parse_user_input("https://anilist.co/anime/9253"),
+            "https://anilist.co/anime/9253"
+        );
+    }
+
+    #[test]
+    fn test_parse_user_input_empty() {
+        assert_eq!(AnilistClient::parse_user_input(""), "");
     }
 }

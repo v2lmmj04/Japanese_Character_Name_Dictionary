@@ -170,6 +170,43 @@ fn default_honorifics() -> bool {
     true
 }
 
+/// Parse an AniList media ID from either a raw numeric string (e.g. "9253")
+/// or an AniList URL (e.g. "https://anilist.co/anime/9253/..." or
+/// "https://anilist.co/manga/30002").
+/// Returns the numeric media ID on success.
+fn parse_anilist_id(input: &str) -> Result<i32, String> {
+    let input = input.trim();
+
+    // Try to extract from AniList URL
+    if input.contains("anilist.co/") {
+        if let Some(pos) = input.rfind("anilist.co/") {
+            let after = &input[pos + "anilist.co/".len()..];
+            // Expected path: anime/9253 or manga/30002 (optionally followed by /slug, ?, #)
+            let segments: Vec<&str> = after.split('/').collect();
+            if segments.len() >= 2 {
+                let id_segment = segments[1]
+                    .split(&['?', '#'][..])
+                    .next()
+                    .unwrap_or("")
+                    .trim();
+                if let Ok(id) = id_segment.parse::<i32>() {
+                    return Ok(id);
+                }
+            }
+        }
+        return Err(format!(
+            "Could not extract a numeric media ID from AniList URL: {}",
+            input
+        ));
+    }
+
+    // Plain numeric ID
+    input
+        .parse::<i32>()
+        .map_err(|_| format!("Invalid AniList ID '{}': must be a number or AniList URL", input))
+}
+
+
 /// Get the base URL for auto-update URLs.
 /// Reads from BASE_URL env var, defaults to http://127.0.0.1:3000.
 fn base_url() -> String {
@@ -789,14 +826,10 @@ async fn generate_dict(
             generate_vndb_dict(id, spoiler_level, params.honorifics, &download_url, &state).await
         }
         "anilist" => {
-            let media_id: i32 = match id.parse() {
+            let media_id: i32 = match parse_anilist_id(id) {
                 Ok(id) => id,
-                Err(_) => {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        "Invalid AniList ID: must be a number",
-                    )
-                        .into_response()
+                Err(e) => {
+                    return (StatusCode::BAD_REQUEST, e).into_response()
                 }
             };
             let media_type = params.media_type.to_uppercase();
@@ -989,4 +1022,103 @@ async fn generate_anilist_dict(
     }
 
     builder.export_bytes()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_anilist_id_plain_number() {
+        assert_eq!(parse_anilist_id("9253").unwrap(), 9253);
+    }
+
+    #[test]
+    fn test_parse_anilist_id_with_whitespace() {
+        assert_eq!(parse_anilist_id("  9253  ").unwrap(), 9253);
+    }
+
+    #[test]
+    fn test_parse_anilist_id_anime_url() {
+        assert_eq!(
+            parse_anilist_id("https://anilist.co/anime/9253").unwrap(),
+            9253
+        );
+    }
+
+    #[test]
+    fn test_parse_anilist_id_manga_url() {
+        assert_eq!(
+            parse_anilist_id("https://anilist.co/manga/30002").unwrap(),
+            30002
+        );
+    }
+
+    #[test]
+    fn test_parse_anilist_id_url_with_slug() {
+        assert_eq!(
+            parse_anilist_id("https://anilist.co/anime/9253/Steins-Gate").unwrap(),
+            9253
+        );
+    }
+
+    #[test]
+    fn test_parse_anilist_id_url_with_query() {
+        assert_eq!(
+            parse_anilist_id("https://anilist.co/anime/9253?tab=characters").unwrap(),
+            9253
+        );
+    }
+
+    #[test]
+    fn test_parse_anilist_id_url_with_fragment() {
+        assert_eq!(
+            parse_anilist_id("https://anilist.co/anime/9253#top").unwrap(),
+            9253
+        );
+    }
+
+    #[test]
+    fn test_parse_anilist_id_http_url() {
+        assert_eq!(
+            parse_anilist_id("http://anilist.co/anime/9253").unwrap(),
+            9253
+        );
+    }
+
+    #[test]
+    fn test_parse_anilist_id_bare_domain() {
+        assert_eq!(
+            parse_anilist_id("anilist.co/anime/9253").unwrap(),
+            9253
+        );
+    }
+
+    #[test]
+    fn test_parse_anilist_id_url_with_whitespace() {
+        assert_eq!(
+            parse_anilist_id("  https://anilist.co/anime/9253  ").unwrap(),
+            9253
+        );
+    }
+
+    #[test]
+    fn test_parse_anilist_id_invalid_string() {
+        assert!(parse_anilist_id("abc").is_err());
+    }
+
+    #[test]
+    fn test_parse_anilist_id_empty() {
+        assert!(parse_anilist_id("").is_err());
+    }
+
+    #[test]
+    fn test_parse_anilist_id_url_missing_id_segment() {
+        assert!(parse_anilist_id("https://anilist.co/anime/").is_err());
+    }
+
+    #[test]
+    fn test_parse_anilist_id_url_non_numeric_id() {
+        assert!(parse_anilist_id("https://anilist.co/anime/abc").is_err());
+    }
 }
