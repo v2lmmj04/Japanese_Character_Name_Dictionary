@@ -31,7 +31,7 @@ podman run -d -p 3000:3000 -e HOST=0.0.0.0 ghcr.io/bee-san/japanese_character_na
 
 The auto-updating requires the URL to be the same and to always be online. If it's not online, the dict won't update. But Yomitan etc will just retry it so it's not a big deal.
 
-If you are an application developer (Manabi, JL, Lunatranslator, Manatan etc) point an AI agent at "agents_read_me.md" and tell it to implement this. The AI agent will then copy and paste the code from this repo and integrate it with your app. 
+If you are an application developer (Manabi, JL, Lunatranslator, Manatan etc) point an AI agent at [`docs/agents_read_me.md`](docs/agents_read_me.md) and tell it to implement this. The AI agent will then copy and paste the code from this repo and integrate it with your app.
 
 
 

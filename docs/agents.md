@@ -41,9 +41,9 @@ yomitan-dict-builder/
     └── integration_tests.rs # HTTP endpoint tests (require running server)
 ```
 
-Root-level files:
-- `plan.md` — Exhaustive implementation plan with full API examples, romaji lookup tables, structured content format, test expectations. Read this for any deep implementation questions.
-- `agents_read_me.md` — Guide for agents porting this code to other languages/frameworks. Not relevant when working on the Rust codebase itself.
+Related docs (in `docs/`):
+- `docs/plans/plan.md` — Exhaustive implementation plan with full API examples, romaji lookup tables, structured content format, test expectations. Read this for any deep implementation questions.
+- `docs/agents_read_me.md` — Guide for agents porting this code to other languages/frameworks. Not relevant when working on the Rust codebase itself.
 
 ## Build & Run
 
@@ -169,7 +169,7 @@ Applied to: family name, given name, combined name, original (with space), and e
 
 **Adding a new API source**: Create a new client module following the pattern of `vndb_client.rs` / `anilist_client.rs`. Must produce `CharacterData` and a title string. Wire it into `main.rs` orchestration.
 
-**Changing the popup card layout**: Edit `content_builder.rs`. The structured content format is Yomitan-specific JSON using HTML-like tags. See `plan.md` section 8 for the full spec.
+**Changing the popup card layout**: Edit `content_builder.rs`. The structured content format is Yomitan-specific JSON using HTML-like tags. See `docs/plans/plan.md` section 8 for the full spec.
 
 **Adding new honorifics**: Edit the `HONORIFICS` constant in `name_parser.rs` and update `dict_builder.rs` if the generation logic needs changes.
 
