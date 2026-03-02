@@ -173,9 +173,30 @@ impl ImageCache {
             return;
         }
         if let Err(e) = tokio::fs::rename(&tmp_path, &final_path).await {
-            warn!(error = %e, "Failed to rename cache file");
-            let _ = tokio::fs::remove_file(&tmp_path).await;
-            return;
+            // Retry once after re-creating the shard directory (race condition: dir may
+            // have been removed by eviction between create_dir_all and rename).
+            if e.kind() == std::io::ErrorKind::NotFound {
+                let _ = tokio::fs::create_dir_all(&shard_dir).await;
+                if let Err(e2) = tokio::fs::rename(&tmp_path, &final_path).await {
+                    warn!(
+                        src = %tmp_path.display(),
+                        dst = %final_path.display(),
+                        error = %e2,
+                        "Failed to rename cache file after retry"
+                    );
+                    let _ = tokio::fs::remove_file(&tmp_path).await;
+                    return;
+                }
+            } else {
+                warn!(
+                    src = %tmp_path.display(),
+                    dst = %final_path.display(),
+                    error = %e,
+                    "Failed to rename cache file"
+                );
+                let _ = tokio::fs::remove_file(&tmp_path).await;
+                return;
+            }
         }
 
         let size = bytes.len() as u64;

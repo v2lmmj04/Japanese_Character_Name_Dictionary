@@ -10,7 +10,7 @@ use axum::{
 };
 use futures::stream::{self, StreamExt};
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_stream::wrappers::ReceiverStream;
@@ -26,6 +26,7 @@ mod dict_builder;
 mod image_cache;
 mod image_handler;
 mod kana;
+mod media_cache;
 mod models;
 mod name_parser;
 mod vndb_client;
@@ -37,6 +38,7 @@ use anilist_client::AnilistClient;
 use dict_builder::DictBuilder;
 use image_cache::ImageCache;
 use image_handler::ImageHandler;
+use media_cache::MediaCache;
 use models::UserMediaEntry;
 use vndb_client::VndbClient;
 
@@ -72,6 +74,8 @@ struct AppState {
     http_client: reqwest::Client,
     /// On-disk image cache with popularity-based eviction.
     image_cache: ImageCache,
+    /// Per-media API response cache (character data + title).
+    media_cache: MediaCache,
 }
 
 impl AppState {
@@ -113,14 +117,17 @@ impl AppState {
         });
         let image_cache = ImageCache::open(std::path::Path::new(&cache_dir))
             .expect("Failed to initialize image cache");
+        let media_cache = MediaCache::open(std::path::Path::new(&cache_dir))
+            .expect("Failed to initialize media cache");
 
         Self {
             downloads,
             http_client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
+                .timeout(std::time::Duration::from_secs(60))
                 .build()
                 .expect("Failed to build HTTP client"),
             image_cache,
+            media_cache,
         }
     }
 }
@@ -598,6 +605,14 @@ async fn generate_dict_from_usernames(
         }
     }
 
+    // Deduplicate media entries by (source, id) to avoid processing the same
+    // title twice (e.g. if the API returns duplicates or the same manga/VN
+    // appears multiple times in a user list).
+    {
+        let mut seen = HashSet::new();
+        media_entries.retain(|entry| seen.insert((entry.source.clone(), entry.id.clone())));
+    }
+
     if media_entries.is_empty() {
         return Err("No in-progress media found in user lists".to_string());
     }
@@ -647,25 +662,12 @@ async fn generate_dict_from_usernames(
                 .await;
         }
 
-        let game_title = &entry.title;
+        let _game_title = &entry.title;
 
         match entry.source.as_str() {
             "vndb" => {
-                let client = VndbClient::with_client(state.http_client.clone());
-
-                let title = match client.fetch_vn_title(&entry.id).await {
-                    Ok((romaji, original)) => {
-                        if !original.is_empty() {
-                            original
-                        } else {
-                            romaji
-                        }
-                    }
-                    Err(_) => game_title.clone(),
-                };
-
-                match client.fetch_characters(&entry.id).await {
-                    Ok(mut char_data) => {
+                match fetch_vndb_cached(&entry.id, state).await {
+                    Ok((title, mut char_data, cached)) => {
                         download_images_concurrent(
                             &mut char_data,
                             &state.http_client,
@@ -677,13 +679,16 @@ async fn generate_dict_from_usernames(
                         for character in char_data.all_characters() {
                             builder.add_character(character, &title);
                         }
+
+                        // Only sleep on cache miss (API call was made, respect rate limit)
+                        if !cached {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                        }
                     }
                     Err(e) => {
                         warn!(vn_id = %entry.id, error = %e, "Failed to fetch VNDB characters");
                     }
                 }
-
-                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
             }
             "anilist" => {
                 let media_id: i32 = match entry.id.parse() {
@@ -700,16 +705,8 @@ async fn generate_dict_from_usernames(
                     _ => "ANIME",
                 };
 
-                let client = AnilistClient::with_client(state.http_client.clone());
-
-                match client.fetch_characters(media_id, media_type).await {
-                    Ok((mut char_data, media_title)) => {
-                        let title = if !media_title.is_empty() {
-                            media_title
-                        } else {
-                            game_title.clone()
-                        };
-
+                match fetch_anilist_cached(media_id, media_type, state).await {
+                    Ok((title, mut char_data, cached)) => {
                         download_images_concurrent(
                             &mut char_data,
                             &state.http_client,
@@ -721,13 +718,16 @@ async fn generate_dict_from_usernames(
                         for character in char_data.all_characters() {
                             builder.add_character(character, &title);
                         }
+
+                        // Only sleep on cache miss (API call was made, respect rate limit)
+                        if !cached {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(700)).await;
+                        }
                     }
                     Err(e) => {
                         warn!(media_id = %entry.id, error = %e, "Failed to fetch AniList characters");
                     }
                 }
-
-                tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
             }
             _ => {
                 warn!(source = %entry.source, "Unknown source");
@@ -941,6 +941,116 @@ async fn generate_index(Query(params): Query<DictQuery>) -> impl IntoResponse {
         .into_response()
 }
 
+// === Cached fetch wrappers ===
+
+/// Fetch VNDB character data, checking the media cache first.
+///
+/// Returns `(title, char_data, cached)` where `cached` is true on cache hit.
+/// On cache miss, fetches from the VNDB API and stores the result.
+/// Image bytes are always `None` in the returned data — call
+/// `download_images_concurrent()` afterward.
+async fn fetch_vndb_cached(
+    vn_id: &str,
+    state: &AppState,
+) -> Result<(String, models::CharacterData, bool), String> {
+    let cache_key = format!("vndb:{}", vn_id);
+
+    // Check cache first (blocking SQLite read, but fast).
+    let cache = state.media_cache.clone();
+    let key_clone = cache_key.clone();
+    let cached = tokio::task::spawn_blocking(move || cache.get(&key_clone))
+        .await
+        .map_err(|e| format!("Cache read failed: {}", e))?;
+
+    if let Some(entry) = cached {
+        return Ok((entry.title, entry.char_data, true));
+    }
+
+    // Cache miss — fetch from API.
+    let client = VndbClient::with_client(state.http_client.clone());
+
+    let (romaji_title, original_title) = client
+        .fetch_vn_title(vn_id)
+        .await
+        .unwrap_or_else(|_| ("Unknown VN".to_string(), String::new()));
+    let title = if !original_title.is_empty() {
+        original_title
+    } else {
+        romaji_title
+    };
+
+    let mut char_data = client.fetch_characters(vn_id).await?;
+
+    // Clear image bytes before caching (images handled by ImageCache).
+    for c in char_data.all_characters_mut() {
+        c.image_bytes = None;
+        c.image_ext = None;
+    }
+
+    // Store in cache (blocking SQLite write).
+    let cache = state.media_cache.clone();
+    let key_clone = cache_key;
+    let title_clone = title.clone();
+    let data_clone = char_data.clone();
+    tokio::task::spawn_blocking(move || cache.put(&key_clone, &title_clone, &data_clone))
+        .await
+        .map_err(|e| format!("Cache write failed: {}", e))?;
+
+    Ok((title, char_data, false))
+}
+
+/// Fetch AniList character data, checking the media cache first.
+///
+/// Returns `(title, char_data, cached)` where `cached` is true on cache hit.
+/// On cache miss, fetches from the AniList API and stores the result.
+/// Image bytes are always `None` in the returned data — call
+/// `download_images_concurrent()` afterward.
+async fn fetch_anilist_cached(
+    media_id: i32,
+    media_type: &str,
+    state: &AppState,
+) -> Result<(String, models::CharacterData, bool), String> {
+    let cache_key = format!("anilist:{}:{}", media_id, media_type);
+
+    // Check cache first.
+    let cache = state.media_cache.clone();
+    let key_clone = cache_key.clone();
+    let cached = tokio::task::spawn_blocking(move || cache.get(&key_clone))
+        .await
+        .map_err(|e| format!("Cache read failed: {}", e))?;
+
+    if let Some(entry) = cached {
+        return Ok((entry.title, entry.char_data, true));
+    }
+
+    // Cache miss — fetch from API.
+    let client = AnilistClient::with_client(state.http_client.clone());
+    let (mut char_data, media_title) = client.fetch_characters(media_id, media_type).await?;
+
+    let title = if !media_title.is_empty() {
+        media_title
+    } else {
+        format!("AniList {}", media_id)
+    };
+
+    // Clear image bytes before caching.
+    for c in char_data.all_characters_mut() {
+        c.image_bytes = None;
+        c.image_ext = None;
+    }
+
+    // Store in cache.
+    let cache = state.media_cache.clone();
+    let key_clone = cache_key;
+    let title_clone = title.clone();
+    let data_clone = char_data.clone();
+    tokio::task::spawn_blocking(move || cache.put(&key_clone, &title_clone, &data_clone))
+        .await
+        .map_err(|e| format!("Cache write failed: {}", e))?;
+
+    Ok((title, char_data, false))
+}
+
 // === Single-media helpers ===
 
 async fn generate_vndb_dict(
@@ -950,19 +1060,7 @@ async fn generate_vndb_dict(
     download_url: &str,
     state: &AppState,
 ) -> Result<Vec<u8>, String> {
-    let client = VndbClient::with_client(state.http_client.clone());
-
-    let (romaji_title, original_title) = client
-        .fetch_vn_title(vn_id)
-        .await
-        .unwrap_or_else(|_| ("Unknown VN".to_string(), String::new()));
-    let game_title = if !original_title.is_empty() {
-        original_title
-    } else {
-        romaji_title
-    };
-
-    let mut char_data = client.fetch_characters(vn_id).await?;
+    let (game_title, mut char_data, _cached) = fetch_vndb_cached(vn_id, state).await?;
 
     // Concurrent image downloads with resize
     download_images_concurrent(&mut char_data, &state.http_client, &state.image_cache, 8).await;
@@ -993,15 +1091,8 @@ async fn generate_anilist_dict(
     download_url: &str,
     state: &AppState,
 ) -> Result<Vec<u8>, String> {
-    let client = AnilistClient::with_client(state.http_client.clone());
-
-    let (mut char_data, media_title) = client.fetch_characters(media_id, media_type).await?;
-
-    let game_title = if !media_title.is_empty() {
-        media_title
-    } else {
-        format!("AniList {}", media_id)
-    };
+    let (game_title, mut char_data, _cached) =
+        fetch_anilist_cached(media_id, media_type, state).await?;
 
     // Concurrent image downloads with resize
     download_images_concurrent(&mut char_data, &state.http_client, &state.image_cache, 6).await;
@@ -1120,5 +1211,103 @@ mod tests {
     #[test]
     fn test_parse_anilist_id_url_non_numeric_id() {
         assert!(parse_anilist_id("https://anilist.co/anime/abc").is_err());
+    }
+
+    #[test]
+    fn test_media_entries_dedup_same_source_and_id() {
+        use crate::models::UserMediaEntry;
+
+        let mut entries = vec![
+            UserMediaEntry {
+                id: "v17".to_string(),
+                title: "Steins;Gate".to_string(),
+                title_romaji: "Steins;Gate".to_string(),
+                source: "vndb".to_string(),
+                media_type: "vn".to_string(),
+            },
+            UserMediaEntry {
+                id: "v17".to_string(),
+                title: "Steins;Gate".to_string(),
+                title_romaji: "Steins;Gate".to_string(),
+                source: "vndb".to_string(),
+                media_type: "vn".to_string(),
+            },
+            UserMediaEntry {
+                id: "9253".to_string(),
+                title: "Steins;Gate".to_string(),
+                title_romaji: "Steins;Gate".to_string(),
+                source: "anilist".to_string(),
+                media_type: "anime".to_string(),
+            },
+        ];
+
+        let mut seen = HashSet::new();
+        entries.retain(|entry| seen.insert((entry.source.clone(), entry.id.clone())));
+
+        assert_eq!(entries.len(), 2, "Duplicate VNDB entry should be removed");
+        assert_eq!(entries[0].source, "vndb");
+        assert_eq!(entries[1].source, "anilist");
+    }
+
+    #[test]
+    fn test_media_entries_dedup_same_id_different_source() {
+        use crate::models::UserMediaEntry;
+
+        let mut entries = vec![
+            UserMediaEntry {
+                id: "9253".to_string(),
+                title: "Steins;Gate".to_string(),
+                title_romaji: "Steins;Gate".to_string(),
+                source: "vndb".to_string(),
+                media_type: "vn".to_string(),
+            },
+            UserMediaEntry {
+                id: "9253".to_string(),
+                title: "Steins;Gate".to_string(),
+                title_romaji: "Steins;Gate".to_string(),
+                source: "anilist".to_string(),
+                media_type: "anime".to_string(),
+            },
+        ];
+
+        let mut seen = HashSet::new();
+        entries.retain(|entry| seen.insert((entry.source.clone(), entry.id.clone())));
+
+        assert_eq!(
+            entries.len(),
+            2,
+            "Same ID from different sources should both be kept"
+        );
+    }
+
+    #[test]
+    fn test_media_entries_dedup_preserves_first_occurrence() {
+        use crate::models::UserMediaEntry;
+
+        let mut entries = vec![
+            UserMediaEntry {
+                id: "30002".to_string(),
+                title: "First Title".to_string(),
+                title_romaji: "First".to_string(),
+                source: "anilist".to_string(),
+                media_type: "manga".to_string(),
+            },
+            UserMediaEntry {
+                id: "30002".to_string(),
+                title: "Second Title".to_string(),
+                title_romaji: "Second".to_string(),
+                source: "anilist".to_string(),
+                media_type: "manga".to_string(),
+            },
+        ];
+
+        let mut seen = HashSet::new();
+        entries.retain(|entry| seen.insert((entry.source.clone(), entry.id.clone())));
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0].title, "First Title",
+            "Should keep the first occurrence"
+        );
     }
 }

@@ -1,31 +1,40 @@
+use rand::Rng;
 use reqwest::Client;
 
 use crate::models::*;
 
 /// Maximum number of retries on HTTP 429 (rate limited).
-const MAX_RETRIES: u32 = 3;
+const MAX_RETRIES: u32 = 5;
+
+/// Maximum backoff cap per retry: 1 minute 30 seconds.
+const MAX_BACKOFF_MS: u64 = 90_000;
 
 /// Send a request with automatic retry on HTTP 429 (Too Many Requests).
-/// Uses exponential backoff: 1s, 2s, 4s.
+/// Uses exponential backoff with jitter: 5s, 10s, 20s, 40s, 80s (capped at 90s).
 async fn send_with_retry(
     request_builder: reqwest::RequestBuilder,
     client: &Client,
 ) -> Result<reqwest::Response, reqwest::Error> {
     let request = request_builder.build()?;
-    let mut delay_ms = 1000u64;
+    let mut delay_ms = 5000u64;
 
     for attempt in 0..=MAX_RETRIES {
         let req_clone = request.try_clone().expect("Request body must be cloneable");
         let response = client.execute(req_clone).await?;
 
         if response.status() == 429 && attempt < MAX_RETRIES {
+            // Add random jitter (0-500ms) to avoid thundering herd
+            let jitter_ms: u64 = rand::thread_rng().gen_range(0..500);
+
             if let Some(retry_after) = response.headers().get("retry-after") {
                 if let Ok(secs) = retry_after.to_str().unwrap_or("").parse::<u64>() {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(secs.min(10))).await;
+                    let wait = (secs * 1000).min(MAX_BACKOFF_MS) + jitter_ms;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(wait)).await;
                     continue;
                 }
             }
-            tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+            let wait = delay_ms.min(MAX_BACKOFF_MS) + jitter_ms;
+            tokio::time::sleep(tokio::time::Duration::from_millis(wait)).await;
             delay_ms *= 2;
             continue;
         }
@@ -193,7 +202,7 @@ impl AnilistClient {
             }
 
             // Rate limit delay between ANIME and MANGA queries
-            tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
 
         Ok(entries)
@@ -323,7 +332,7 @@ impl AnilistClient {
             }
 
             page += 1;
-            tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
 
         Ok((char_data, media_title))
