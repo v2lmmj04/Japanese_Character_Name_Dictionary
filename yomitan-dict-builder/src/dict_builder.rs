@@ -101,6 +101,15 @@ impl DictBuilder {
             char.last_name_hint.as_deref(),
         );
 
+        // Get ALL plausible splits (for ambiguous all-kanji names with symmetric
+        // kana lengths, multiple candidates may exist — we generate entries for
+        // each so lookups work regardless of which split is correct).
+        let all_candidates = name_parser::split_japanese_name_all_candidates(
+            name_original,
+            char.first_name_hint.as_deref(),
+            char.last_name_hint.as_deref(),
+        );
+
         // --- Base name entries ---
         // Generate split entries when we have family/given parts (either from space or hints)
         let has_split = name_parts.has_space || name_parts.family.is_some();
@@ -128,29 +137,32 @@ impl DictBuilder {
                 ));
             }
 
-            // 3. Family name only: "須々木"
-            if let Some(ref family) = name_parts.family {
-                if !family.is_empty() && added_terms.insert(family.clone()) {
-                    self.entries.push(ContentBuilder::create_term_entry(
-                        family,
-                        &readings.family,
-                        role,
-                        score,
-                        &structured_content,
-                    ));
+            // 3. Family name only and 4. Given name only — for ALL split candidates.
+            // When the split is unambiguous, all_candidates has one entry (same as
+            // name_parts). When ambiguous, this adds entries for every plausible
+            // family/given pair (e.g., both "石井"/"守" and "石"/"井守").
+            for candidate in &all_candidates {
+                if let Some(ref family) = candidate.family {
+                    if !family.is_empty() && added_terms.insert(family.clone()) {
+                        self.entries.push(ContentBuilder::create_term_entry(
+                            family,
+                            &readings.family,
+                            role,
+                            score,
+                            &structured_content,
+                        ));
+                    }
                 }
-            }
-
-            // 4. Given name only: "心一"
-            if let Some(ref given) = name_parts.given {
-                if !given.is_empty() && added_terms.insert(given.clone()) {
-                    self.entries.push(ContentBuilder::create_term_entry(
-                        given,
-                        &readings.given,
-                        role,
-                        score,
-                        &structured_content,
-                    ));
+                if let Some(ref given) = candidate.given {
+                    if !given.is_empty() && added_terms.insert(given.clone()) {
+                        self.entries.push(ContentBuilder::create_term_entry(
+                            given,
+                            &readings.given,
+                            role,
+                            score,
+                            &structured_content,
+                        ));
+                    }
                 }
             }
         } else {
@@ -283,15 +295,17 @@ impl DictBuilder {
 
         let mut base_names_with_readings: Vec<(String, String)> = Vec::new();
         if has_split {
-            // Original kanji forms
-            if let Some(ref family) = name_parts.family {
-                if !family.is_empty() {
-                    base_names_with_readings.push((family.clone(), readings.family.clone()));
+            // Original kanji forms — all split candidates' family/given pairs
+            for candidate in &all_candidates {
+                if let Some(ref family) = candidate.family {
+                    if !family.is_empty() {
+                        base_names_with_readings.push((family.clone(), readings.family.clone()));
+                    }
                 }
-            }
-            if let Some(ref given) = name_parts.given {
-                if !given.is_empty() {
-                    base_names_with_readings.push((given.clone(), readings.given.clone()));
+                if let Some(ref given) = candidate.given {
+                    if !given.is_empty() {
+                        base_names_with_readings.push((given.clone(), readings.given.clone()));
+                    }
                 }
             }
             if !name_parts.combined.is_empty() {
@@ -1788,5 +1802,86 @@ mod tests {
         assert_eq!(get_score("custom"), 0);
         assert_eq!(get_score(""), 0);
         assert_eq!(get_score("MAIN"), 0); // case-sensitive
+    }
+
+    // === Regression: ambiguous split generates entries for all candidates ===
+
+    #[test]
+    fn test_ambiguous_split_generates_both_family_given_entries() {
+        // "石井守" with hints Mamoru/Ishii has symmetric kana lengths (3+3),
+        // producing two equally-scored splits: "石"+"井守" and "石井"+"守".
+        // The dict builder should generate entries for BOTH so lookups work
+        // regardless of which split is correct.
+        let mut builder = DictBuilder::new(0, None, "Test".to_string(), false);
+        let mut ch = make_test_character("c1", "Mamoru Ishii", "石井守", "main");
+        ch.first_name_hint = Some("Mamoru".to_string());
+        ch.last_name_hint = Some("Ishii".to_string());
+        ch.aliases = vec![];
+        builder.add_character(&ch, "Test");
+
+        let terms: Vec<String> = builder
+            .entries
+            .iter()
+            .filter_map(|e| e[0].as_str().map(|s| s.to_string()))
+            .collect();
+
+        // Combined form (same for all splits)
+        assert!(
+            terms.contains(&"石井守".to_string()),
+            "Should have combined name"
+        );
+
+        // Both family candidates
+        assert!(
+            terms.contains(&"石井".to_string()),
+            "Should have 2-kanji family entry '石井'"
+        );
+        assert!(
+            terms.contains(&"石".to_string()),
+            "Should have 1-kanji family entry '石'"
+        );
+
+        // Both given candidates
+        assert!(
+            terms.contains(&"守".to_string()),
+            "Should have 1-kanji given entry '守'"
+        );
+        assert!(
+            terms.contains(&"井守".to_string()),
+            "Should have 2-kanji given entry '井守'"
+        );
+    }
+
+    #[test]
+    fn test_unambiguous_split_generates_single_family_given() {
+        // "幸平創真" with hints Souma/Yukihira has asymmetric kana (4+3),
+        // producing a single clear winner at split_pos=2 → "幸平"+"創真".
+        // Should NOT generate entries for the wrong split.
+        let mut builder = DictBuilder::new(0, None, "Test".to_string(), false);
+        let mut ch = make_test_character("c1", "Souma Yukihira", "幸平創真", "main");
+        ch.first_name_hint = Some("Souma".to_string());
+        ch.last_name_hint = Some("Yukihira".to_string());
+        ch.aliases = vec![];
+        builder.add_character(&ch, "Test");
+
+        let terms: Vec<String> = builder
+            .entries
+            .iter()
+            .filter_map(|e| e[0].as_str().map(|s| s.to_string()))
+            .collect();
+
+        assert!(
+            terms.contains(&"幸平".to_string()),
+            "Should have family '幸平'"
+        );
+        assert!(
+            terms.contains(&"創真".to_string()),
+            "Should have given '創真'"
+        );
+        // The wrong split should NOT be present
+        assert!(
+            !terms.contains(&"幸".to_string()),
+            "Should NOT have wrong 1-char family split"
+        );
     }
 }

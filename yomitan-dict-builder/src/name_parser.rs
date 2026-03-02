@@ -615,6 +615,149 @@ fn find_split_point(native: &str, family_kana: &str, given_kana: &str) -> Option
     }
 }
 
+/// Find ALL plausible split points for a spaceless Japanese name.
+///
+/// Returns every split position whose score is within a small epsilon of the
+/// best score. For most names only one position wins clearly; for names with
+/// symmetric kana lengths (e.g., "石井守" where family and given both have 3
+/// kana) multiple tied positions are returned so the caller can generate
+/// dictionary entries for all of them.
+fn find_all_split_points(
+    native: &str,
+    family_kana: &str,
+    given_kana: &str,
+) -> Vec<(String, String)> {
+    let chars: Vec<char> = native.chars().collect();
+    if chars.is_empty() {
+        return Vec::new();
+    }
+
+    let family_kana_len = family_kana.chars().count();
+    let given_kana_len = given_kana.chars().count();
+
+    // Strategy 1: kanji→kana transition (unambiguous — returns at most one result)
+    let mut last_kanji_idx = None;
+    let mut first_kana_after_kanji = None;
+    for (i, &c) in chars.iter().enumerate() {
+        if kana::contains_kanji(&c.to_string()) {
+            last_kanji_idx = Some(i);
+        } else if last_kanji_idx.is_some() && first_kana_after_kanji.is_none() {
+            first_kana_after_kanji = Some(i);
+        }
+    }
+
+    if let Some(boundary) = first_kana_after_kanji {
+        let candidate_given: String = chars[boundary..].iter().collect();
+        let candidate_given_hira = kana::kata_to_hira(&candidate_given);
+
+        if candidate_given_hira.chars().count() == given_kana_len
+            || candidate_given_hira == kana::kata_to_hira(given_kana)
+        {
+            let family_str: String = chars[..boundary].iter().collect();
+            return vec![(family_str, candidate_given)];
+        }
+    }
+
+    // Strategy 2: ratio-based scoring — collect ALL positions within epsilon of best
+    let total_chars = chars.len();
+    if total_chars < 2 {
+        return Vec::new();
+    }
+
+    let total_kana = family_kana_len + given_kana_len;
+    if total_kana == 0 {
+        return Vec::new();
+    }
+
+    let mut scored: Vec<(usize, f64)> = Vec::new();
+
+    for split_pos in 1..total_chars {
+        let family_chars = split_pos;
+        let given_chars = total_chars - split_pos;
+
+        let family_ratio = family_kana_len as f64 / family_chars as f64;
+        let given_ratio = given_kana_len as f64 / given_chars as f64;
+
+        if !(0.5..=4.0).contains(&family_ratio) {
+            continue;
+        }
+        if !(0.5..=4.0).contains(&given_ratio) {
+            continue;
+        }
+
+        let score = (family_ratio - given_ratio).abs()
+            + (family_ratio - 2.0).abs() * 0.1
+            + (given_ratio - 2.0).abs() * 0.1;
+
+        scored.push((split_pos, score));
+    }
+
+    if scored.is_empty() {
+        return Vec::new();
+    }
+
+    let best_score = scored.iter().map(|(_, s)| *s).fold(f64::MAX, f64::min);
+    let epsilon = 1e-6;
+
+    scored
+        .into_iter()
+        .filter(|(_, s)| (s - best_score).abs() < epsilon)
+        .map(|(pos, _)| {
+            let family_str: String = chars[..pos].iter().collect();
+            let given_str: String = chars[pos..].iter().collect();
+            (family_str, given_str)
+        })
+        .collect()
+}
+
+/// Return all plausible name splits for a Japanese name, given optional hints.
+///
+/// Like [`split_japanese_name_with_hints`] but returns multiple candidates when
+/// the split is ambiguous (e.g., symmetric kana lengths in an all-kanji name).
+/// The dict builder uses this to generate entries for every candidate so that
+/// lookup works regardless of which split is correct.
+pub fn split_japanese_name_all_candidates(
+    name_original: &str,
+    first_name_hint: Option<&str>,
+    last_name_hint: Option<&str>,
+) -> Vec<JapaneseNameParts> {
+    // Space, middle-dot, or missing hints → single unambiguous result
+    if name_original.contains(' ') || name_original.contains('・') {
+        return vec![split_japanese_name(name_original)];
+    }
+
+    let first = first_name_hint.map(|s| s.trim()).filter(|s| !s.is_empty());
+    let last = last_name_hint.map(|s| s.trim()).filter(|s| !s.is_empty());
+
+    let (first_hint, last_hint) = match (first, last) {
+        (Some(f), Some(l)) => (f, l),
+        _ => return vec![split_japanese_name(name_original)],
+    };
+
+    let family_kana = kana::alphabet_to_kana(last_hint);
+    let given_kana = kana::alphabet_to_kana(first_hint);
+
+    let splits = find_all_split_points(name_original, &family_kana, &given_kana);
+
+    if splits.is_empty() {
+        return vec![split_japanese_name(name_original)];
+    }
+
+    splits
+        .into_iter()
+        .map(|(family_str, given_str)| {
+            let combined = format!("{}{}", family_str, given_str);
+            JapaneseNameParts {
+                has_space: false,
+                original: name_original.to_string(),
+                combined,
+                family: Some(family_str),
+                given: Some(given_str),
+            }
+        })
+        .collect()
+}
+
 /// Generate hiragana readings for a character name.
 ///
 /// This is the primary reading generation function. It accepts optional romaji hints
@@ -1132,5 +1275,103 @@ mod tests {
     fn test_find_split_empty() {
         let result = find_split_point("", "かん", "じ");
         assert!(result.is_none());
+    }
+
+    // === Regression: "石井守" (Mamoru Ishii) symmetric kana-length split ===
+
+    #[test]
+    fn test_find_split_ishii_mamoru() {
+        // "石井守": family_kana=いしい (3), given_kana=まもる (3)
+        // Split positions 1 and 2 produce identical ratio scores.
+        // find_split_point returns the first (split_pos=1 → "石"+"井守").
+        // That's fine — find_all_split_points covers both.
+        let result = find_split_point("石井守", "いしい", "まもる");
+        assert!(result.is_some(), "Should find a split point for 石井守");
+    }
+
+    #[test]
+    fn test_find_all_splits_ishii_mamoru_returns_both() {
+        // Symmetric kana lengths → both split positions are equally plausible.
+        // find_all_split_points must return both so the dict covers both.
+        let results = find_all_split_points("石井守", "いしい", "まもる");
+        assert_eq!(results.len(), 2, "Should return two tied splits");
+
+        let families: Vec<&str> = results.iter().map(|(f, _)| f.as_str()).collect();
+        let givens: Vec<&str> = results.iter().map(|(_, g)| g.as_str()).collect();
+        assert!(
+            families.contains(&"石"),
+            "Should include 1-char family split"
+        );
+        assert!(
+            families.contains(&"石井"),
+            "Should include 2-char family split"
+        );
+        assert!(
+            givens.contains(&"井守"),
+            "Should include 2-char given split"
+        );
+        assert!(givens.contains(&"守"), "Should include 1-char given split");
+    }
+
+    #[test]
+    fn test_find_all_splits_unambiguous_returns_one() {
+        // 幸平創真: family=ゆきひら (4 kana), given=そうま (3 kana)
+        // Split pos=2 clearly wins — only one result expected.
+        let results = find_all_split_points("幸平創真", "ゆきひら", "そうま");
+        assert_eq!(
+            results.len(),
+            1,
+            "Unambiguous split should return one result"
+        );
+        assert_eq!(results[0].0, "幸平");
+        assert_eq!(results[0].1, "創真");
+    }
+
+    #[test]
+    fn test_find_all_splits_kanji_kana_boundary_returns_one() {
+        // 薙切アリス: kanji→kana boundary is unambiguous (Strategy 1)
+        let results = find_all_split_points("薙切アリス", "なきり", "ありす");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, "薙切");
+        assert_eq!(results[0].1, "アリス");
+    }
+
+    #[test]
+    fn test_split_all_candidates_ishii_mamoru() {
+        // End-to-end: both candidates generated from hints
+        let candidates =
+            split_japanese_name_all_candidates("石井守", Some("Mamoru"), Some("Ishii"));
+        assert_eq!(candidates.len(), 2, "Should produce two candidates");
+
+        let families: Vec<Option<&str>> = candidates.iter().map(|c| c.family.as_deref()).collect();
+        assert!(families.contains(&Some("石")));
+        assert!(families.contains(&Some("石井")));
+    }
+
+    #[test]
+    fn test_split_all_candidates_with_space_returns_one() {
+        // Space in native → single unambiguous split
+        let candidates =
+            split_japanese_name_all_candidates("田所 恵", Some("Megumi"), Some("Tadokoro"));
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].family.as_deref(), Some("田所"));
+    }
+
+    #[test]
+    fn test_split_hints_ishii_mamoru() {
+        // split_japanese_name_with_hints still returns a single result (first candidate)
+        let parts = split_japanese_name_with_hints("石井守", Some("Mamoru"), Some("Ishii"));
+        assert!(parts.family.is_some(), "Should produce family part");
+        assert!(parts.given.is_some(), "Should produce given part");
+        assert_eq!(parts.combined, "石井守");
+    }
+
+    #[test]
+    fn test_name_readings_ishii_mamoru() {
+        // Readings are correct regardless of which split wins (they come from hints)
+        let r = generate_name_readings("石井守", "Mamoru Ishii", Some("Mamoru"), Some("Ishii"));
+        assert_eq!(r.family, "いしい", "Family reading should be いしい");
+        assert_eq!(r.given, "まもる", "Given reading should be まもる");
+        assert_eq!(r.full, "いしいまもる");
     }
 }
