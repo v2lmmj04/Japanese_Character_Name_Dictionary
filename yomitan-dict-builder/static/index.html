@@ -211,6 +211,30 @@
             font-size: 0.85em;
         }
 
+        /* Mobile responsiveness */
+        @media (max-width: 600px) {
+            .form-group.inline {
+                flex-direction: column;
+                gap: 0;
+            }
+            .media-item {
+                flex-wrap: wrap;
+                gap: 4px;
+            }
+            .media-item .title {
+                min-width: 0;
+                flex-basis: calc(100% - 70px);
+            }
+            .media-item .romaji {
+                margin-left: 0;
+                flex-basis: 100%;
+                order: 3;
+            }
+            .media-item .badge {
+                margin-left: auto;
+            }
+        }
+
         /* Info cards */
         .info-cards {
             max-width: 700px;
@@ -417,7 +441,6 @@
                 <a href="https://github.com/bee-san/Japanese_Character_Name_Dictionary/blob/0f80bf30df432e4145dee1e53f1b296e6bc93ef8/agents_read_me.md" target="_blank" rel="noopener">
                     read this
                 </a> and it will add it.
-                Anilist and VNDB rate limit this IP very hard so it is prone to breaking. Please deploy this or implement it into your own apps.
             </p>
         </div>
 
@@ -436,6 +459,9 @@
                 This project is open source! Check out the code, report issues, or contribute on GitHub.
                 If you find it useful, consider sponsoring to support development ❤️ 
                 It costs <b>$14.74</b> on average per month to run this. Please sponsor or donate to me if you find this useful.
+            </p>
+            <p style="margin-bottom: 12px; font-size: 0.85em; color: #999;">
+                Anilist and VNDB rate limit this IP very hard so it is prone to breaking. Please deploy this or implement it into your own apps.
             </p>
             <div class="footer-links">
                 <a href="https://github.com/bee-san/Japanese_Character_Name_Dictionary" target="_blank" rel="noopener">
