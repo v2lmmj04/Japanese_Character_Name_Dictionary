@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use rand::Rng;
 use reqwest::Client;
 
@@ -115,6 +117,8 @@ impl AnilistClient {
     ) -> Result<Vec<UserMediaEntry>, String> {
         let username = Self::parse_user_input(username);
         let mut entries = Vec::new();
+        // Duplicates can exist across custom user lists, so we filter by unique media type + ID pairs
+        let mut seen: HashSet<(String, String)> = HashSet::new();
 
         for (media_type_gql, media_type_label) in &[("ANIME", "anime"), ("MANGA", "manga")] {
             let variables = serde_json::json!({
@@ -172,6 +176,13 @@ impl AnilistClient {
                                 continue;
                             }
 
+                            let media_type_str = media_type_label.to_string();
+                            let id_str = id.to_string();
+
+                            if !seen.insert((media_type_str.clone(), id_str.clone())) {
+                                continue;
+                            }
+
                             let title_data = &media["title"];
                             let title_native =
                                 title_data["native"].as_str().unwrap_or("").to_string();
@@ -190,11 +201,11 @@ impl AnilistClient {
                             };
 
                             entries.push(UserMediaEntry {
-                                id: id.to_string(),
+                                id: id_str,
                                 title,
                                 title_romaji,
                                 source: "anilist".to_string(),
-                                media_type: media_type_label.to_string(),
+                                media_type: media_type_str,
                             });
                         }
                     }
