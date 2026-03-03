@@ -33,7 +33,7 @@ The auto-updating requires the URL to be the same and to always be online. If it
 
 If you are an application developer (Manabi, JL, Lunatranslator, Manatan etc) point an AI agent at [`docs/agents_read_me.md`](docs/agents_read_me.md) and tell it to implement this. The AI agent will then copy and paste the code from this repo and integrate it with your app.
 
-
+**All this below is AI slop btw**
 
 ### Building it
 
