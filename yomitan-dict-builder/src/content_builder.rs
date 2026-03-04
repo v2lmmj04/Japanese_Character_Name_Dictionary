@@ -306,6 +306,9 @@ impl ContentBuilder {
         if !char.name_original.is_empty() {
             content.push(json!({
                 "tag": "div",
+                "data": {
+                    "id": "name",
+                },
                 "style": { "fontWeight": "bold", "fontSize": "1.2em" },
                 "content": &char.name_original
             }));
@@ -315,6 +318,9 @@ impl ContentBuilder {
         if !char.name.is_empty() {
             content.push(json!({
                 "tag": "div",
+                "data": {
+                    "id": "name-romaji",
+                },
                 "style": { "fontStyle": "italic", "color": "#666", "marginBottom": "8px" },
                 "content": &char.name
             }));
@@ -366,17 +372,28 @@ impl ContentBuilder {
             .map(|(_, l)| *l)
             .unwrap_or("Unknown");
 
+        // Wrap in an empty div for better compatibility with tools that strip HTML, like JL.
+        // Yomitan's schema does not support using `"display": "inline"` inside "style" to do this as a single div element.
         content.push(json!({
-            "tag": "span",
-            "style": {
-                "background": role_color,
-                "color": "white",
-                "padding": "2px 6px",
-                "borderRadius": "3px",
-                "fontSize": "0.85em",
-                "marginTop": "4px"
+            "tag": "div",
+            "data": {
+                "id": "role-container",
             },
-            "content": role_label
+            "content": {
+                "tag": "span",
+                "style": {
+                    "background": role_color,
+                    "color": "white",
+                    "padding": "2px 6px",
+                    "borderRadius": "3px",
+                    "fontSize": "0.85em",
+                    "marginTop": "4px"
+                },
+                "data": {
+                    "id": "role",
+                },
+                "content": role_label
+            }
         }));
 
         // ===== LEVEL 1+: Description and Character Information =====
@@ -818,9 +835,36 @@ mod tests {
         // Level 0: should NOT contain <details> tags
         let has_details = items.iter().any(|v| v["tag"].as_str() == Some("details"));
         assert!(!has_details, "Level 0 should not contain details sections");
+
         // Should contain name and role
-        let has_span = items.iter().any(|v| v["tag"].as_str() == Some("span"));
-        assert!(has_span, "Should contain role badge span");
+        let name = items
+            .iter()
+            .find(|v| v["data"]["id"].as_str() == Some("name"))
+            .expect("Name element should exist");
+        let name_romaji = items
+            .iter()
+            .find(|v| v["data"]["id"].as_str() == Some("name-romaji"))
+            .expect("Romaji element should exist");
+        let role_container = items
+            .iter()
+            .find(|v| v["data"]["id"].as_str() == Some("role-container"))
+            .expect("Role container element should exist");
+
+        assert_eq!(
+            name["content"].as_str(),
+            Some("須々木 心一"),
+            "Level 0 should contain a name"
+        );
+        assert_eq!(
+            name_romaji["content"].as_str(),
+            Some("Shinichi Suzuki"),
+            "Level 0 should contain a name in romaji"
+        );
+        assert_eq!(
+            role_container["content"]["content"].as_str(),
+            Some("Protagonist"),
+            "Level 0 should contain a role"
+        )
     }
 
     #[test]
@@ -1086,12 +1130,22 @@ mod tests {
         char.role = "custom_role".to_string();
         let content = cb.build_content(&char, None, None, "Test");
         let items = content["content"].as_array().unwrap();
+
         // Should use fallback color and "Unknown" label
-        let role_span = items
+        let role_container = items
             .iter()
-            .find(|v| v["style"]["background"].as_str() == Some("#9E9E9E"));
-        assert!(role_span.is_some(), "Unknown role should use gray fallback");
-        assert_eq!(role_span.unwrap()["content"], "Unknown");
+            .find(|v| v["data"]["id"].as_str() == Some("role-container"))
+            .expect("Role container element should exist");
+
+        assert_eq!(
+            role_container["content"]["style"]["background"].as_str(),
+            Some("#9E9E9E"),
+            "Unknown role should use a gray fallback color"
+        );
+        assert_eq!(
+            role_container["content"]["content"], "Unknown",
+            "Unknown role name should still be populated"
+        );
     }
 
     // === Edge case: build_content with empty game title ===
@@ -1285,9 +1339,18 @@ mod tests {
     #[test]
     fn test_format_birthday_all_months() {
         let months = [
-            (1, "January"), (2, "February"), (3, "March"), (4, "April"),
-            (5, "May"), (6, "June"), (7, "July"), (8, "August"),
-            (9, "September"), (10, "October"), (11, "November"), (12, "December"),
+            (1, "January"),
+            (2, "February"),
+            (3, "March"),
+            (4, "April"),
+            (5, "May"),
+            (6, "June"),
+            (7, "July"),
+            (8, "August"),
+            (9, "September"),
+            (10, "October"),
+            (11, "November"),
+            (12, "December"),
         ];
         for (month, name) in months {
             let result = ContentBuilder::format_birthday(&[month, 15]);
@@ -1477,14 +1540,14 @@ mod tests {
         let content = json!({"type": "structured-content", "content": []});
         let entry = ContentBuilder::create_term_entry("田中", "たなか", "main", 100, &content);
         let arr = entry.as_array().unwrap();
-        assert_eq!(arr[0], "田中");       // term
-        assert_eq!(arr[1], "たなか");     // reading
-        assert_eq!(arr[2], "name main");  // definition tags
-        assert_eq!(arr[3], "");           // rules
-        assert_eq!(arr[4], 100);          // score
-        assert!(arr[5].is_array());       // definitions array
-        assert_eq!(arr[6], 0);            // sequence
-        assert_eq!(arr[7], "");           // term tags
+        assert_eq!(arr[0], "田中"); // term
+        assert_eq!(arr[1], "たなか"); // reading
+        assert_eq!(arr[2], "name main"); // definition tags
+        assert_eq!(arr[3], ""); // rules
+        assert_eq!(arr[4], 100); // score
+        assert!(arr[5].is_array()); // definitions array
+        assert_eq!(arr[6], 0); // sequence
+        assert_eq!(arr[7], ""); // term tags
     }
 
     #[test]
@@ -1505,7 +1568,8 @@ mod tests {
                 {"tag": "div", "content": "test"}
             ]
         });
-        let result = ContentBuilder::build_honorific_content(&base, "さん", "Generic polite suffix");
+        let result =
+            ContentBuilder::build_honorific_content(&base, "さん", "Generic polite suffix");
         assert_eq!(result["type"], "structured-content");
         let content = result["content"].as_array().unwrap();
         // First element should be the honorific banner
@@ -1532,9 +1596,18 @@ mod tests {
         let cb = ContentBuilder::new(0);
         let mut char = make_test_character();
         char.personality = vec![
-            CharacterTrait { name: "Kind".to_string(), spoiler: 0 },
-            CharacterTrait { name: "Secret".to_string(), spoiler: 1 },
-            CharacterTrait { name: "Big Secret".to_string(), spoiler: 2 },
+            CharacterTrait {
+                name: "Kind".to_string(),
+                spoiler: 0,
+            },
+            CharacterTrait {
+                name: "Secret".to_string(),
+                spoiler: 1,
+            },
+            CharacterTrait {
+                name: "Big Secret".to_string(),
+                spoiler: 2,
+            },
         ];
         let traits = cb.build_traits_by_category(&char);
         let traits_str = serde_json::to_string(&traits).unwrap();
@@ -1547,9 +1620,18 @@ mod tests {
         let cb = ContentBuilder::new(1);
         let mut char = make_test_character();
         char.personality = vec![
-            CharacterTrait { name: "Kind".to_string(), spoiler: 0 },
-            CharacterTrait { name: "Minor".to_string(), spoiler: 1 },
-            CharacterTrait { name: "Major".to_string(), spoiler: 2 },
+            CharacterTrait {
+                name: "Kind".to_string(),
+                spoiler: 0,
+            },
+            CharacterTrait {
+                name: "Minor".to_string(),
+                spoiler: 1,
+            },
+            CharacterTrait {
+                name: "Major".to_string(),
+                spoiler: 2,
+            },
         ];
         let traits = cb.build_traits_by_category(&char);
         let traits_str = serde_json::to_string(&traits).unwrap();
@@ -1563,9 +1645,18 @@ mod tests {
         let cb = ContentBuilder::new(2);
         let mut char = make_test_character();
         char.personality = vec![
-            CharacterTrait { name: "Kind".to_string(), spoiler: 0 },
-            CharacterTrait { name: "Minor".to_string(), spoiler: 1 },
-            CharacterTrait { name: "Major".to_string(), spoiler: 2 },
+            CharacterTrait {
+                name: "Kind".to_string(),
+                spoiler: 0,
+            },
+            CharacterTrait {
+                name: "Minor".to_string(),
+                spoiler: 1,
+            },
+            CharacterTrait {
+                name: "Major".to_string(),
+                spoiler: 2,
+            },
         ];
         let traits = cb.build_traits_by_category(&char);
         let traits_str = serde_json::to_string(&traits).unwrap();
