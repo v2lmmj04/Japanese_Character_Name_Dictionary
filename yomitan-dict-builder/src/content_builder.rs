@@ -335,6 +335,7 @@ impl ContentBuilder {
         if !char.name_original.is_empty() {
             content.push(json!({
                 "tag": "div",
+                "data": { "id": "name" },
                 "style": { "fontWeight": "bold", "fontSize": "1.2em" },
                 "content": &char.name_original
             }));
@@ -344,6 +345,7 @@ impl ContentBuilder {
         if !char.name.is_empty() {
             content.push(json!({
                 "tag": "div",
+                "data": { "id": "name-romaji" },
                 "style": { "fontStyle": "italic", "color": "#666", "marginBottom": "8px" },
                 "content": &char.name
             }));
@@ -396,17 +398,25 @@ impl ContentBuilder {
                 .map(|(_, l)| *l)
                 .unwrap_or("Unknown");
 
+            // Wrap in a div for better compatibility with tools that strip HTML, like JL.
+            // Yomitan's schema does not support `"display": "inline"` in style,
+            // so we nest a div > span instead of using a single inline div.
             content.push(json!({
-                "tag": "span",
-                "style": {
-                    "background": role_color,
-                    "color": "white",
-                    "padding": "2px 6px",
-                    "borderRadius": "3px",
-                    "fontSize": "0.85em",
-                    "marginTop": "4px"
-                },
-                "content": role_label
+                "tag": "div",
+                "data": { "id": "role-container" },
+                "content": {
+                    "tag": "span",
+                    "style": {
+                        "background": role_color,
+                        "color": "white",
+                        "padding": "2px 6px",
+                        "borderRadius": "3px",
+                        "fontSize": "0.85em",
+                        "marginTop": "4px"
+                    },
+                    "data": { "id": "role" },
+                    "content": role_label
+                }
             }));
         }
 
@@ -672,7 +682,12 @@ mod tests {
             image_height: None,
             first_name_hint: None,
             last_name_hint: None,
-            seiyuu: None, seiyuu_image_url: None, seiyuu_image_bytes: None, seiyuu_image_ext: None, seiyuu_image_width: None, seiyuu_image_height: None,
+            seiyuu: None,
+            seiyuu_image_url: None,
+            seiyuu_image_bytes: None,
+            seiyuu_image_ext: None,
+            seiyuu_image_width: None,
+            seiyuu_image_height: None,
         }
     }
 
@@ -932,8 +947,34 @@ mod tests {
             "Minimal settings should not contain details sections"
         );
         // Should contain name and role
-        let has_span = items.iter().any(|v| v["tag"].as_str() == Some("span"));
-        assert!(has_span, "Should contain role badge span");
+        let name = items
+            .iter()
+            .find(|v| v["data"]["id"].as_str() == Some("name"))
+            .expect("Name element should exist");
+        let name_romaji = items
+            .iter()
+            .find(|v| v["data"]["id"].as_str() == Some("name-romaji"))
+            .expect("Romaji name element should exist");
+        let role_container = items
+            .iter()
+            .find(|v| v["data"]["id"].as_str() == Some("role-container"))
+            .expect("Role container element should exist");
+
+        assert_eq!(
+            name["content"].as_str(),
+            Some("須々木 心一"),
+            "Should contain Japanese name"
+        );
+        assert_eq!(
+            name_romaji["content"].as_str(),
+            Some("Shinichi Suzuki"),
+            "Should contain romanized name"
+        );
+        assert_eq!(
+            role_container["content"]["content"].as_str(),
+            Some("Protagonist"),
+            "Should contain role label"
+        );
     }
 
     #[test]
@@ -1206,11 +1247,19 @@ mod tests {
         let content = cb.build_content(&char, None, None, None, None, "Test");
         let items = content["content"].as_array().unwrap();
         // Should use fallback color and "Unknown" label
-        let role_span = items
+        let role_container = items
             .iter()
-            .find(|v| v["style"]["background"].as_str() == Some("#9E9E9E"));
-        assert!(role_span.is_some(), "Unknown role should use gray fallback");
-        assert_eq!(role_span.unwrap()["content"], "Unknown");
+            .find(|v| v["data"]["id"].as_str() == Some("role-container"))
+            .expect("Role container element should exist");
+        assert_eq!(
+            role_container["content"]["style"]["background"].as_str(),
+            Some("#9E9E9E"),
+            "Unknown role should use gray fallback color"
+        );
+        assert_eq!(
+            role_container["content"]["content"], "Unknown",
+            "Unknown role should display 'Unknown' label"
+        );
     }
 
     // === Edge case: build_content with empty game title ===
@@ -1573,7 +1622,14 @@ mod tests {
     fn test_build_content_with_image_includes_img_tag() {
         let cb = ContentBuilder::new(settings_minimal());
         let char = make_test_character();
-        let content = cb.build_content(&char, Some("img/c1.jpg"), Some((100, 150)), None, None, "Test");
+        let content = cb.build_content(
+            &char,
+            Some("img/c1.jpg"),
+            Some((100, 150)),
+            None,
+            None,
+            "Test",
+        );
         let content_str = serde_json::to_string(&content).unwrap();
         assert!(content_str.contains("img/c1.jpg"));
         assert!(content_str.contains("\"tag\":\"img\""));
@@ -1583,7 +1639,14 @@ mod tests {
     fn test_build_content_image_dimensions_calculated() {
         let cb = ContentBuilder::new(settings_minimal());
         let char = make_test_character();
-        let content = cb.build_content(&char, Some("img/c1.jpg"), Some((100, 200)), None, None, "Test");
+        let content = cb.build_content(
+            &char,
+            Some("img/c1.jpg"),
+            Some((100, 200)),
+            None,
+            None,
+            "Test",
+        );
         let content_str = serde_json::to_string(&content).unwrap();
         // Should contain width and height attributes
         assert!(content_str.contains("\"width\""));
@@ -1777,7 +1840,14 @@ mod tests {
             ..DictSettings::default()
         });
         let char = make_test_character();
-        let content = cb.build_content(&char, Some("img/c1.jpg"), Some((100, 200)), None, None, "Game");
+        let content = cb.build_content(
+            &char,
+            Some("img/c1.jpg"),
+            Some((100, 200)),
+            None,
+            None,
+            "Game",
+        );
         let items = content["content"].as_array().unwrap();
         let has_img = items.iter().any(|v| v["tag"].as_str() == Some("img"));
         assert!(has_img, "show_image=true should include img tag");
@@ -1790,7 +1860,14 @@ mod tests {
             ..DictSettings::default()
         });
         let char = make_test_character();
-        let content = cb.build_content(&char, Some("img/c1.jpg"), Some((100, 200)), None, None, "Game");
+        let content = cb.build_content(
+            &char,
+            Some("img/c1.jpg"),
+            Some((100, 200)),
+            None,
+            None,
+            "Game",
+        );
         let items = content["content"].as_array().unwrap();
         let has_img = items.iter().any(|v| v["tag"].as_str() == Some("img"));
         assert!(!has_img, "show_image=false should exclude img tag");
@@ -1838,14 +1915,14 @@ mod tests {
         let char = make_test_character();
         let content = cb.build_content(&char, None, None, None, None, "Game");
         let items = content["content"].as_array().unwrap();
-        // Role badge uses background color styling — verify no span with background exists
-        let role_spans: Vec<_> = items
+        // Role badge uses a div wrapper — verify no role-container exists
+        let role_containers: Vec<_> = items
             .iter()
-            .filter(|v| v["tag"].as_str() == Some("span") && v["style"]["background"].is_string())
+            .filter(|v| v["data"]["id"].as_str() == Some("role-container"))
             .collect();
         assert!(
-            role_spans.is_empty(),
-            "show_tag=false should not have role badge spans"
+            role_containers.is_empty(),
+            "show_tag=false should not have role badge"
         );
     }
 
@@ -2054,7 +2131,14 @@ mod tests {
             show_seiyuu: false,
         });
         let char = make_test_character();
-        let content = cb.build_content(&char, Some("img/c1.jpg"), Some((100, 200)), None, None, "Game Title");
+        let content = cb.build_content(
+            &char,
+            Some("img/c1.jpg"),
+            Some((100, 200)),
+            None,
+            None,
+            "Game Title",
+        );
         let items = content["content"].as_array().unwrap();
 
         // Should only have: Japanese name div, Romanized name div, "From: Game Title" div
@@ -2087,7 +2171,14 @@ mod tests {
         let cb = ContentBuilder::new(DictSettings::default());
         let mut char = make_test_character();
         char.description = Some("Has a description".to_string());
-        let content = cb.build_content(&char, Some("img/c1.jpg"), Some((100, 200)), None, None, "Game");
+        let content = cb.build_content(
+            &char,
+            Some("img/c1.jpg"),
+            Some((100, 200)),
+            None,
+            None,
+            "Game",
+        );
         let content_str = serde_json::to_string(&content).unwrap();
 
         assert!(content_str.contains("\"img\""), "Should have img tag");
@@ -2134,7 +2225,14 @@ mod tests {
         let cb = ContentBuilder::new(DictSettings::default());
         let mut char = make_test_character();
         char.description = Some("desc".to_string());
-        let content = cb.build_content(&char, Some("img/c1.jpg"), Some((100, 200)), None, None, "Game");
+        let content = cb.build_content(
+            &char,
+            Some("img/c1.jpg"),
+            Some((100, 200)),
+            None,
+            None,
+            "Game",
+        );
         let items = content["content"].as_array().unwrap();
         // Expect: jp name, romaji name, img, source, role badge, description details, traits details = 7
         assert_eq!(
@@ -2216,7 +2314,7 @@ mod tests {
         char.birthday = None;
         let content = cb.build_content(&char, None, None, None, None, "");
         let items = content["content"].as_array().unwrap();
-        // With everything empty and no title: should only have role badge span
+        // With everything empty and no title: should only have role badge
         assert!(
             !items.is_empty(),
             "Even empty character should produce at least the role badge"
@@ -2251,7 +2349,14 @@ mod tests {
     fn test_image_with_valid_dimensions_calculates_proportionally() {
         let cb = ContentBuilder::new(DictSettings::default());
         let char = make_test_character();
-        let content = cb.build_content(&char, Some("img/c1.jpg"), Some((200, 400)), None, None, "Game");
+        let content = cb.build_content(
+            &char,
+            Some("img/c1.jpg"),
+            Some((200, 400)),
+            None,
+            None,
+            "Game",
+        );
         let items = content["content"].as_array().unwrap();
         let img = items
             .iter()
