@@ -989,6 +989,13 @@ async fn generate_dict_from_entries(
                         8,
                     )
                     .await;
+                    download_seiyuu_images(
+                        &mut char_data,
+                        &state.http_client,
+                        &state.image_cache,
+                        4,
+                    )
+                    .await;
 
                     for character in char_data.all_characters() {
                         builder.add_character(character, &title);
@@ -1029,6 +1036,13 @@ async fn generate_dict_from_entries(
                             &state.http_client,
                             &state.image_cache,
                             6,
+                        )
+                        .await;
+                        download_seiyuu_images(
+                            &mut char_data,
+                            &state.http_client,
+                            &state.image_cache,
+                            4,
                         )
                         .await;
 

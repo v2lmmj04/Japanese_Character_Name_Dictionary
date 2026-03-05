@@ -25,6 +25,7 @@ pub struct DictBuilder {
     pub entries: Vec<serde_json::Value>,
     images: Vec<(String, Vec<u8>)>, // (filename, bytes) for ZIP img/ folder
     added_images: HashSet<String>,  // track image filenames to avoid duplicate ZIP entries
+    seen_characters: HashSet<String>, // track normalized name_original to skip cross-media duplicates
     settings: DictSettings,
     revision: String,
     download_url: Option<String>,
@@ -42,6 +43,7 @@ impl DictBuilder {
             entries: Vec::new(),
             images: Vec::new(),
             added_images: HashSet::new(),
+            seen_characters: HashSet::new(),
             settings,
             revision: format!("{:012}", revision),
             download_url,
@@ -57,6 +59,24 @@ impl DictBuilder {
                 id = %char.id,
                 name = %char.name,
                 "Skipping character with no Japanese name (name_original is empty)"
+            );
+            return;
+        }
+
+        // Deduplicate characters across media by normalized name_original (strip whitespace).
+        // If the same character appears in multiple VNs/anime (or across VNDB and AniList),
+        // only the first occurrence produces dictionary entries.
+        let normalized_name: String = name_original
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        if !self.seen_characters.insert(normalized_name) {
+            tracing::debug!(
+                id = %char.id,
+                name = %char.name,
+                name_original = %name_original,
+                game = %game_title,
+                "Skipping duplicate character (already seen this name_original)"
             );
             return;
         }
@@ -1777,28 +1797,116 @@ mod tests {
         );
     }
 
-    // === Edge case: two characters with same name ===
+    // === Edge case: two characters with same name are deduplicated ===
 
     #[test]
-    fn test_two_characters_same_name_both_get_entries() {
+    fn test_two_characters_same_name_deduplicated() {
         let mut builder = DictBuilder::new(s_no_hon(), None, "Test".to_string());
         let char1 = make_test_character("c1", "Saber", "セイバー", "main");
         let char2 = make_test_character("c2", "Saber", "セイバー", "side");
         builder.add_character(&char1, "Game A");
         builder.add_character(&char2, "Game B");
 
-        // Both characters should produce entries (no cross-character dedup)
-        // The terms will be the same but the structured content differs
+        // Cross-character dedup: second character with same name_original is skipped
         let saber_entries: Vec<&serde_json::Value> = builder
             .entries
             .iter()
             .filter(|e| e[0].as_str() == Some("セイバー"))
             .collect();
 
-        assert!(
-            saber_entries.len() >= 2,
-            "Two characters with same name should both produce entries, got {}",
+        assert_eq!(
+            saber_entries.len(),
+            1,
+            "Duplicate character should be deduplicated, got {} entries",
             saber_entries.len()
+        );
+    }
+
+    #[test]
+    fn test_cross_media_dedup_same_name_different_games() {
+        let mut builder = DictBuilder::new(s_no_hon(), None, "Test".to_string());
+        let char1 = make_test_character("c42", "Okabe Rintarou", "岡部 倫太郎", "main");
+        let char2 = make_test_character("c42", "Okabe Rintarou", "岡部 倫太郎", "main");
+        builder.add_character(&char1, "Steins;Gate");
+        builder.add_character(&char2, "Steins;Gate 0");
+
+        // Only the first occurrence should produce entries
+        let entries_count = builder.entries.len();
+        let mut builder2 = DictBuilder::new(s_no_hon(), None, "Test".to_string());
+        builder2.add_character(&char1, "Steins;Gate");
+        assert_eq!(
+            entries_count,
+            builder2.entries.len(),
+            "Duplicate character from second game should not add extra entries"
+        );
+    }
+
+    #[test]
+    fn test_cross_media_dedup_space_normalization() {
+        // VNDB uses "岡部 倫太郎" (with space), AniList might use "岡部倫太郎" (no space)
+        let mut builder = DictBuilder::new(s_no_hon(), None, "Test".to_string());
+        let char_vndb = make_test_character("c42", "Okabe Rintarou", "岡部 倫太郎", "main");
+        let mut char_anilist = make_test_character("35252", "Okabe Rintarou", "岡部倫太郎", "main");
+        char_anilist.first_name_hint = Some("Rintarou".to_string());
+        char_anilist.last_name_hint = Some("Okabe".to_string());
+
+        builder.add_character(&char_vndb, "Steins;Gate VN");
+        let entries_after_first = builder.entries.len();
+
+        builder.add_character(&char_anilist, "Steins;Gate Anime");
+        assert_eq!(
+            builder.entries.len(),
+            entries_after_first,
+            "Same character with/without space in name_original should be deduplicated"
+        );
+    }
+
+    #[test]
+    fn test_cross_media_dedup_different_names_not_affected() {
+        let mut builder = DictBuilder::new(s_no_hon(), None, "Test".to_string());
+        let char1 = make_test_character("c42", "Okabe Rintarou", "岡部 倫太郎", "main");
+        let char2 = make_test_character("c43", "Makise Kurisu", "牧瀬 紅莉栖", "primary");
+        builder.add_character(&char1, "Steins;Gate");
+        builder.add_character(&char2, "Steins;Gate");
+
+        // Both characters should have entries since they have different names
+        let terms: Vec<&str> = builder
+            .entries
+            .iter()
+            .filter_map(|e| e[0].as_str())
+            .collect();
+        assert!(
+            terms.contains(&"岡部 倫太郎"),
+            "First character should have entries"
+        );
+        assert!(
+            terms.contains(&"牧瀬 紅莉栖"),
+            "Second character with different name should also have entries"
+        );
+    }
+
+    #[test]
+    fn test_cross_media_dedup_different_source_ids_same_name() {
+        // Simulates VNDB character c42 and AniList character 35252 — same person, different IDs
+        let mut builder = DictBuilder::new(s_no_hon(), None, "Test".to_string());
+        let char_vndb = make_test_character("c42", "Okabe Rintarou", "岡部 倫太郎", "main");
+        let mut char_anilist =
+            make_test_character("35252", "Okabe Rintarou", "岡部 倫太郎", "main");
+        char_anilist.first_name_hint = Some("Rintarou".to_string());
+        char_anilist.last_name_hint = Some("Okabe".to_string());
+
+        builder.add_character(&char_vndb, "Steins;Gate VN");
+        let entries_after_first = builder.entries.len();
+        assert!(
+            entries_after_first > 0,
+            "First character should produce entries"
+        );
+
+        builder.add_character(&char_anilist, "Steins;Gate Anime");
+        assert_eq!(
+            builder.entries.len(),
+            entries_after_first,
+            "Cross-source duplicate (different IDs, same name_original) should be deduplicated"
         );
     }
 

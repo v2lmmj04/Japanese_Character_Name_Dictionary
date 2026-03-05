@@ -519,7 +519,7 @@ impl ContentBuilder {
                     content.push(json!({
                         "tag": "details",
                         "content": [
-                            { "tag": "summary", "content": "Seiyuu" },
+                            { "tag": "summary", "content": "Voiced by" },
                             {
                                 "tag": "div",
                                 "style": { "marginTop": "4px" },
