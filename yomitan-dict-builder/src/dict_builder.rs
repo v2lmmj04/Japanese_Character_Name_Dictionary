@@ -11,6 +11,8 @@ use crate::kana;
 use crate::models::*;
 use crate::name_parser::{self, HONORIFIC_SUFFIXES};
 
+const TERM_BANK_LIMIT: usize = 2_000;
+
 fn get_score(role: &str) -> i32 {
     match role {
         "main" => 100,
@@ -593,9 +595,11 @@ impl DictBuilder {
 
         // 3. term_bank_N.json — stream base entries then lazily generate honorifics.
         // Instead of holding all honorific entries in memory (which can be hundreds of
-        // MB for large dictionaries), we buffer up to 10k entries at a time and flush
-        // each chunk to the ZIP before moving on.
-        let entries_per_bank = 10_000;
+        // MB for large dictionaries), we buffer up to a term bank amount at a time and
+        // flush each chunk to the ZIP before moving on.
+        // Yomitan recommends keeping each term bank small to reduce import issues.
+        // JMdict and Jitendex both use 2k entries as their limit.
+        let entries_per_bank = TERM_BANK_LIMIT;
         let mut bank_buffer: Vec<serde_json::Value> = Vec::with_capacity(entries_per_bank);
         let mut bank_number: usize = 1;
 
@@ -1498,7 +1502,7 @@ mod tests {
 
         // Generate enough entries to force multiple term banks.
         // With ~170 honorific suffixes, each character produces ~2000+ entries,
-        // so only a handful of characters are needed to exceed 10,000.
+        // so only a handful of characters are needed to exceed the size limit.
         for i in 0..10 {
             let ch = Character {
                 id: format!("c{}", i),
@@ -1535,8 +1539,9 @@ mod tests {
         }
 
         assert!(
-            builder.collect_all_entries().len() > 10_000,
-            "Need >10k entries to test chunking, got {}",
+            builder.collect_all_entries().len() > TERM_BANK_LIMIT,
+            "Need >{} entries to test chunking, got {}",
+            TERM_BANK_LIMIT,
             builder.collect_all_entries().len()
         );
 
@@ -1550,19 +1555,21 @@ mod tests {
 
         assert!(
             term_banks.len() >= 2,
-            "Should have at least 2 term banks with >10k entries, got {}",
+            "Should have at least 2 term banks with >{} entries, got {}",
+            TERM_BANK_LIMIT,
             term_banks.len()
         );
 
-        // Verify each bank has at most 10,000 entries
+        // Verify each bank has at most the term bank limit number of entries
         for name in &term_banks {
             let raw = read_zip_entry(&mut archive, name);
             let arr: Vec<serde_json::Value> = serde_json::from_str(&raw).unwrap();
             assert!(
-                arr.len() <= 10_000,
-                "{} has {} entries, max is 10,000",
+                arr.len() <= TERM_BANK_LIMIT,
+                "{} has {} entries, max is {}",
                 name,
-                arr.len()
+                arr.len(),
+                TERM_BANK_LIMIT
             );
         }
     }
@@ -3307,7 +3314,7 @@ mod tests {
 
     #[test]
     fn test_streaming_chunk_size_respected_in_export() {
-        // Verify that no term_bank file exceeds 10,000 entries,
+        // Verify that no term_bank file exceeds the limit for entries,
         // even with many characters producing deferred honorifics
         let mut builder = DictBuilder::new(s(), None, "Test".to_string());
         for i in 0..10 {
@@ -3362,10 +3369,11 @@ mod tests {
             let raw = read_zip_entry(&mut archive, name);
             let arr: Vec<serde_json::Value> = serde_json::from_str(&raw).unwrap();
             assert!(
-                arr.len() <= 10_000,
-                "Streaming chunk violated: {} has {} entries (max 10,000)",
+                arr.len() <= TERM_BANK_LIMIT,
+                "Streaming chunk violated: {} has {} entries (max {})",
                 name,
-                arr.len()
+                arr.len(),
+                TERM_BANK_LIMIT
             );
         }
     }
