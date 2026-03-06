@@ -442,6 +442,7 @@ impl VndbClient {
             name: data["name"].as_str().unwrap_or("").to_string(),
             name_original: data["original"].as_str().unwrap_or("").to_string(),
             role,
+            source: "vndb".to_string(),
             sex,
             age: data["age"].as_u64().map(|a| a.to_string()),
             height: data["height"].as_u64().map(|h| h as u32),

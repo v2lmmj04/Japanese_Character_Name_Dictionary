@@ -537,6 +537,239 @@ impl ContentBuilder {
         })
     }
 
+    /// Build a structured content card for a character with multiple media appearances.
+    ///
+    /// Instead of showing a single "From: title" + role badge, this renders a list
+    /// of (role badge, "From: title") rows — one per appearance — sorted by role
+    /// importance (main > primary > side > appears).
+    ///
+    /// Single-value fields (image, description, traits, seiyuu) come from the
+    /// `char` parameter (already merged by the caller using first-non-None logic).
+    pub fn build_merged_content(
+        &self,
+        char: &Character,
+        image_path: Option<&str>,
+        image_dims: Option<(u32, u32)>,
+        seiyuu_image_path: Option<&str>,
+        seiyuu_image_dims: Option<(u32, u32)>,
+        appearances: &[(String, String)], // (role, media_title), pre-sorted by importance
+    ) -> serde_json::Value {
+        let mut content: Vec<serde_json::Value> = Vec::new();
+
+        // ===== Always shown: Name block =====
+
+        // Japanese name (large, bold)
+        if !char.name_original.is_empty() {
+            content.push(json!({
+                "tag": "div",
+                "data": { "id": "name" },
+                "style": { "fontWeight": "bold", "fontSize": "1.2em" },
+                "content": &char.name_original
+            }));
+        }
+
+        // Romanized name (italic, gray)
+        if !char.name.is_empty() {
+            content.push(json!({
+                "tag": "div",
+                "data": { "id": "name-romaji" },
+                "style": { "fontStyle": "italic", "color": "#666", "marginBottom": "8px" },
+                "content": &char.name
+            }));
+        }
+
+        // ===== Character portrait image (gated by show_image) =====
+        if self.settings.show_image {
+            if let Some(path) = image_path {
+                let (display_w, display_h) = match image_dims {
+                    Some((w, h)) if w > 0 && h > 0 => {
+                        let dh = Self::MAX_DISPLAY_HEIGHT;
+                        let dw = (w * dh + h / 2) / h;
+                        (dw, dh)
+                    }
+                    _ => (Self::FALLBACK_DISPLAY_WIDTH, Self::MAX_DISPLAY_HEIGHT),
+                };
+                content.push(json!({
+                    "tag": "img",
+                    "path": path,
+                    "width": display_w,
+                    "height": display_h,
+                    "sizeUnits": "px",
+                    "collapsible": false,
+                    "collapsed": false,
+                    "background": false
+                }));
+            }
+        }
+
+        // ===== Appearances: role badge + "From: title" for each media =====
+        for (role, media_title) in appearances {
+            if self.settings.show_tag {
+                let role_color = ROLE_COLORS
+                    .iter()
+                    .find(|(r, _)| *r == role.as_str())
+                    .map(|(_, c)| *c)
+                    .unwrap_or("#9E9E9E");
+                let role_label = ROLE_LABELS
+                    .iter()
+                    .find(|(r, _)| *r == role.as_str())
+                    .map(|(_, l)| *l)
+                    .unwrap_or("Unknown");
+
+                let mut row_content: Vec<serde_json::Value> = vec![json!({
+                    "tag": "span",
+                    "style": {
+                        "background": role_color,
+                        "color": "white",
+                        "padding": "2px 6px",
+                        "borderRadius": "3px",
+                        "fontSize": "0.85em"
+                    },
+                    "data": { "id": "role" },
+                    "content": role_label
+                })];
+
+                if !media_title.is_empty() {
+                    row_content.push(json!({
+                        "tag": "span",
+                        "style": { "fontSize": "0.9em", "color": "#888" },
+                        "content": format!(" From: {}", media_title)
+                    }));
+                }
+
+                content.push(json!({
+                    "tag": "div",
+                    "data": { "id": "role-container" },
+                    "style": { "marginTop": "4px" },
+                    "content": row_content
+                }));
+            } else if !media_title.is_empty() {
+                // No role badge, just show the media title
+                content.push(json!({
+                    "tag": "div",
+                    "style": { "fontSize": "0.9em", "color": "#888", "marginTop": "4px" },
+                    "content": format!("From: {}", media_title)
+                }));
+            }
+        }
+
+        // ===== Description section (gated by show_description) =====
+        if self.settings.show_description {
+            if let Some(ref desc) = char.description {
+                if !desc.trim().is_empty() {
+                    let display_desc = if !self.settings.show_spoilers {
+                        Self::strip_spoilers(desc)
+                    } else {
+                        desc.clone()
+                    };
+
+                    if !display_desc.is_empty() {
+                        let parsed = Self::parse_vndb_markup(&display_desc);
+                        let structured = Self::parse_bbcode_to_structured(&parsed);
+                        content.push(json!({
+                            "tag": "details",
+                            "content": [
+                                { "tag": "summary", "content": "Description" },
+                                {
+                                    "tag": "div",
+                                    "style": { "fontSize": "0.9em", "marginTop": "4px" },
+                                    "content": structured
+                                }
+                            ]
+                        }));
+                    }
+                }
+            }
+        }
+
+        // ===== Character Information / Traits section (gated by show_traits) =====
+        if self.settings.show_traits {
+            let mut info_items: Vec<serde_json::Value> = Vec::new();
+
+            // Physical stats as compact line
+            let stats = self.format_stats(char);
+            if !stats.is_empty() {
+                info_items.push(json!({
+                    "tag": "li",
+                    "style": { "fontWeight": "bold" },
+                    "content": stats
+                }));
+            }
+
+            // Traits organized by category (filtered by spoiler setting)
+            let trait_items = self.build_traits_by_category(char);
+            info_items.extend(trait_items);
+
+            if !info_items.is_empty() {
+                content.push(json!({
+                    "tag": "details",
+                    "content": [
+                        { "tag": "summary", "content": "Character Information" },
+                        {
+                            "tag": "ul",
+                            "style": { "marginTop": "4px", "paddingLeft": "20px" },
+                            "content": info_items
+                        }
+                    ]
+                }));
+            }
+        }
+
+        // ===== Seiyuu section (gated by show_seiyuu) =====
+        if self.settings.show_seiyuu {
+            if let Some(ref va) = char.seiyuu {
+                if !va.is_empty() {
+                    let mut seiyuu_inner: Vec<serde_json::Value> = Vec::new();
+
+                    // Seiyuu portrait image (if available)
+                    if let Some(va_path) = seiyuu_image_path {
+                        let (display_w, display_h) = match seiyuu_image_dims {
+                            Some((w, h)) if w > 0 && h > 0 => {
+                                let dh = 60u32;
+                                let dw = (w * dh + h / 2) / h;
+                                (dw, dh)
+                            }
+                            _ => (40, 60),
+                        };
+                        seiyuu_inner.push(json!({
+                            "tag": "img",
+                            "path": va_path,
+                            "width": display_w,
+                            "height": display_h,
+                            "sizeUnits": "px",
+                            "collapsible": false,
+                            "collapsed": false,
+                            "background": false
+                        }));
+                    }
+
+                    seiyuu_inner.push(json!({
+                        "tag": "div",
+                        "style": { "fontSize": "0.9em", "marginTop": "4px" },
+                        "content": va.as_str()
+                    }));
+
+                    content.push(json!({
+                        "tag": "details",
+                        "content": [
+                            { "tag": "summary", "content": "Voiced by" },
+                            {
+                                "tag": "div",
+                                "style": { "marginTop": "4px" },
+                                "content": seiyuu_inner
+                            }
+                        ]
+                    }));
+                }
+            }
+        }
+
+        json!({
+            "type": "structured-content",
+            "content": content
+        })
+    }
+
     /// Build a structured content card with an honorific description banner.
     /// Clones the base content and prepends a styled honorific note.
     pub fn build_honorific_content(
@@ -651,6 +884,7 @@ mod tests {
             name: "Shinichi Suzuki".to_string(),
             name_original: "須々木 心一".to_string(),
             role: "main".to_string(),
+            source: String::new(),
             sex: Some("m".to_string()),
             age: Some("17".to_string()),
             height: Some(165),

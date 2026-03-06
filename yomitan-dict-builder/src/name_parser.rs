@@ -595,10 +595,27 @@ fn find_split_point(native: &str, family_kana: &str, given_kana: &str) -> Option
             continue;
         }
 
-        // Score: how close are both ratios to each other and to typical values
-        let score = (family_ratio - given_ratio).abs()
-            + (family_ratio - 2.0).abs() * 0.1
-            + (given_ratio - 2.0).abs() * 0.1;
+        // Score: penalize kana-per-kanji ratios outside the [1.0, 2.0] sweet spot
+        // (1 mora per kanji is common in names using ateji like 亜/耶/美,
+        //  2 mora per kanji is the most typical on-yomi/kun-yomi length).
+        // Use a small balance tie-breaker to prefer more even splits when
+        // ratio penalties are equal.
+        let family_penalty = if family_ratio < 1.0 {
+            1.0 - family_ratio
+        } else if family_ratio > 2.0 {
+            family_ratio - 2.0
+        } else {
+            0.0
+        };
+        let given_penalty = if given_ratio < 1.0 {
+            1.0 - given_ratio
+        } else if given_ratio > 2.0 {
+            given_ratio - 2.0
+        } else {
+            0.0
+        };
+        let balance = (family_chars as f64 - given_chars as f64).abs();
+        let score = family_penalty + given_penalty + balance * 0.01;
 
         if score < best_score {
             best_score = score;
@@ -685,9 +702,22 @@ fn find_all_split_points(
             continue;
         }
 
-        let score = (family_ratio - given_ratio).abs()
-            + (family_ratio - 2.0).abs() * 0.1
-            + (given_ratio - 2.0).abs() * 0.1;
+        let family_penalty = if family_ratio < 1.0 {
+            1.0 - family_ratio
+        } else if family_ratio > 2.0 {
+            family_ratio - 2.0
+        } else {
+            0.0
+        };
+        let given_penalty = if given_ratio < 1.0 {
+            1.0 - given_ratio
+        } else if given_ratio > 2.0 {
+            given_ratio - 2.0
+        } else {
+            0.0
+        };
+        let balance = (family_chars as f64 - given_chars as f64).abs();
+        let score = family_penalty + given_penalty + balance * 0.01;
 
         scored.push((split_pos, score));
     }
@@ -1642,6 +1672,38 @@ mod tests {
         assert!(parts.given.is_none());
         assert_eq!(parts.original, "岡部倫太郎");
         assert_eq!(parts.combined, "岡部倫太郎");
+    }
+
+    // === Regression: "小湊亜耶" (Kominato Aya) split at wrong position ===
+
+    #[test]
+    fn test_split_kominato_aya() {
+        // 小湊亜耶: family=小湊 (こみなと, 4 kana), given=亜耶 (あや, 2 kana)
+        // Bug: was splitting as 小湊亜 + 耶 instead of 小湊 + 亜耶
+        let result = find_split_point("小湊亜耶", "こみなと", "あや");
+        assert!(result.is_some());
+        let (family, given) = result.unwrap();
+        assert_eq!(family, "小湊", "Family should be 小湊, not 小湊亜");
+        assert_eq!(given, "亜耶", "Given should be 亜耶, not 耶");
+    }
+
+    #[test]
+    fn test_split_hints_kominato_aya() {
+        let parts = split_japanese_name_with_hints("小湊亜耶", Some("Aya"), Some("Kominato"));
+        assert_eq!(
+            parts.family.as_deref(),
+            Some("小湊"),
+            "Family should be 小湊"
+        );
+        assert_eq!(parts.given.as_deref(), Some("亜耶"), "Given should be 亜耶");
+    }
+
+    #[test]
+    fn test_readings_kominato_aya() {
+        let r = generate_name_readings("小湊亜耶", "Aya Kominato", Some("Aya"), Some("Kominato"));
+        assert_eq!(r.family, "こみなと", "Family reading should be こみなと");
+        assert_eq!(r.given, "あや", "Given reading should be あや");
+        assert_eq!(r.full, "こみなとあや");
     }
 
     #[test]

@@ -467,6 +467,7 @@ impl AnilistClient {
             name: name_full,
             name_original: name_native,
             role,
+            source: "anilist".to_string(),
             sex,
             age,
             height: None, // AniList doesn't provide

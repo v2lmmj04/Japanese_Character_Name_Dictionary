@@ -25,6 +25,8 @@ pub struct Character {
     pub name: String,          // Romanized (Western order for VNDB: "Given Family")
     pub name_original: String, // Japanese (Japanese order: "Family Given")
     pub role: String,          // "main", "primary", "side", "appears"
+    #[serde(default)]
+    pub source: String, // "vndb" or "anilist" — identifies which API produced this character
     pub sex: Option<String>,   // "m" or "f"
     pub age: Option<String>,   // String because AniList may return "17-18"
     pub height: Option<u32>,   // cm (VNDB only; None for AniList)
@@ -138,6 +140,7 @@ mod tests {
             name: "A".to_string(),
             name_original: "A".to_string(),
             role: "main".to_string(),
+            source: String::new(),
             sex: None,
             age: None,
             height: None,
@@ -169,6 +172,7 @@ mod tests {
             name: "B".to_string(),
             name_original: "B".to_string(),
             role: "side".to_string(),
+            source: String::new(),
             sex: None,
             age: None,
             height: None,
@@ -210,6 +214,7 @@ mod tests {
             name: "A".to_string(),
             name_original: "A".to_string(),
             role: "main".to_string(),
+            source: String::new(),
             sex: None,
             age: None,
             height: None,
@@ -255,6 +260,7 @@ mod tests {
             name: "Okabe Rintarou".to_string(),
             name_original: "岡部 倫太郎".to_string(),
             role: "main".to_string(),
+            source: String::new(),
             sex: Some("m".to_string()),
             age: Some("18".to_string()),
             height: Some(177),
@@ -317,6 +323,7 @@ mod tests {
             name: "".to_string(),
             name_original: "".to_string(),
             role: "side".to_string(),
+            source: String::new(),
             sex: None,
             age: None,
             height: None,
@@ -376,6 +383,7 @@ mod tests {
             name: "Main".to_string(),
             name_original: "".to_string(),
             role: "main".to_string(),
+            source: String::new(),
             sex: None,
             age: None,
             height: None,
@@ -407,6 +415,7 @@ mod tests {
             name: "Primary".to_string(),
             name_original: "".to_string(),
             role: "primary".to_string(),
+            source: String::new(),
             sex: None,
             age: None,
             height: None,
@@ -438,6 +447,7 @@ mod tests {
             name: "Side".to_string(),
             name_original: "".to_string(),
             role: "side".to_string(),
+            source: String::new(),
             sex: None,
             age: None,
             height: None,
@@ -469,6 +479,7 @@ mod tests {
             name: "Appears".to_string(),
             name_original: "".to_string(),
             role: "appears".to_string(),
+            source: String::new(),
             sex: None,
             age: None,
             height: None,
@@ -509,6 +520,7 @@ mod tests {
             name: "Test".to_string(),
             name_original: "テスト".to_string(),
             role: "main".to_string(),
+            source: String::new(),
             sex: Some("f".to_string()),
             age: None,
             height: None,
