@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bee's Custom Yomitan Dict Maker</title>
-  <meta name="description" content="Create and edit custom Yomitan dictionaries — no account, no backend, runs entirely in your browser.">
+  <meta name="description" content="Create and edit custom Yomitan dictionaries with plaintext.">
   <meta name="theme-color" content="#e84393">
   <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
@@ -17,7 +17,7 @@
 
   <header>
     <h1>Bee's <span>Custom Yomitan Dict</span> Maker</h1>
-    <p class="subtitle">Create and edit custom Yomitan dictionaries — no account, no backend, runs entirely in your browser.</p>
+    <p class="subtitle">Create and edit custom Yomitan dictionaries with plaintext.</p>
     <a class="back-link" href="/">← Back to Character Dictionary</a>
   </header>
 
@@ -43,15 +43,14 @@
       <div class="editor-wrap">
         <textarea
           id="entry-area"
-          placeholder="# One entry per line: term, reading, definition&#10;# Lines starting with # are comments and are ignored&#10;&#10;雪, ゆき, snow&#10;愛, あい, love, affection&#10;猫, ねこ, cat&#10;東京, とうきょう, Tokyo"
+          placeholder="雪, ゆき, snow&#10;愛, あい, love, affection&#10;猫, ねこ, cat&#10;東京, とうきょう, Tokyo"
           spellcheck="false"
           autocomplete="off"
         ></textarea>
         <div class="editor-footer">
           <span class="hint">
             Format: <code>term, reading, definition</code> &mdash;
-            commas in definitions are fine &mdash;
-            <code>#</code> for comments
+            commas in definitions are fine
           </span>
           <span id="entry-count">0 entries</span>
         </div>
@@ -107,9 +106,20 @@
           Ask it to output entries in the <code>term, reading, definition</code> format and paste them straight in. Example prompt:
         </p>
         <div class="chatgpt-prompt">
-          Give me the Japanese names of 10 Pokémon — one per line in this format:<br>
+          List me abilities from Naruto.<br><br>
+          Output EXACTLY one per line in this format:<br>
           <em>term, reading, definition</em><br><br>
-          Example: ピカチュウ, ぴかちゅう, Pikachu
+          Requirements:<br>
+          - term: the Japanese name (kanji/kana as used in the series)<br>
+          - reading: hiragana only<br>
+          - definition: concise English explanation (under 10 words)<br>
+          - media-specific terms only — not common words found in a standard dictionary<br>
+          - no numbering<br>
+          - no extra text<br><br>
+          Example:<br>
+          螺旋丸, らせんがん, Rotating chakra sphere attack<br>
+          影分身の術, かげぶんしんのじゅつ, Creates solid shadow clones<br>
+          千鳥, ちどり, Lightning chakra thrust attack
         </div>
       </div>
 
@@ -117,11 +127,8 @@
 
   </div>
 
-  <!-- JSZip via CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
-          integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL38H0a5//4+HA=="
-          crossorigin="anonymous"
-          referrerpolicy="no-referrer"></script>
+  <!-- JSZip (local copy) -->
+  <script src="/static/custom/jszip.min.js"></script>
   <script src="/static/custom/app.js"></script>
 
 </body>
