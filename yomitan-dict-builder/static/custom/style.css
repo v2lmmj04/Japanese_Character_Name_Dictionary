@@ -315,6 +315,54 @@ button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
+/* ── ChatGPT tip ── */
+.chatgpt-tip {
+  margin: 12px 12px 12px;
+  padding: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.78rem;
+}
+
+.chatgpt-tip-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.chatgpt-tip-body {
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.chatgpt-tip-body code {
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.chatgpt-prompt {
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  line-height: 1.6;
+  font-style: normal;
+  user-select: all;
+}
+
+.chatgpt-prompt em {
+  color: var(--accent);
+  font-style: normal;
+  font-family: var(--font-mono);
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .layout { flex-direction: column; }
