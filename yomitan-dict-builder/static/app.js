@@ -17,7 +17,24 @@ function toggleSetting(key) {
         settings.spoilers = true; // reset so re-enabling description shows spoilers
     }
 
+    saveSettings();
     updatePreviewCard();
+}
+
+function saveSettings() {
+    try {
+        localStorage.setItem('beeCharDict_settings', JSON.stringify(settings));
+    } catch (e) {}
+}
+
+function loadSettings() {
+    try {
+        const saved = localStorage.getItem('beeCharDict_settings');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            Object.assign(settings, parsed);
+        }
+    } catch (e) {}
 }
 
 function updatePreviewCard() {
@@ -564,7 +581,7 @@ function validateAnilistUser() {
 
 function validateManualId(input) {
     const row = input.closest('.manual-entry-row');
-    const source = row.querySelector('[data-field="source"]').value;
+    const sourceSelect = row.querySelector('[data-field="source"]');
     const val = input.value.trim();
     let hint = row.querySelector('.entry-id .input-hint');
 
@@ -577,41 +594,59 @@ function validateManualId(input) {
 
     if (!val) { clearHint(hint, input); return true; }
 
+    // Always reject username-style URLs regardless of source
+    if (/vndb\.org\/u\d+/i.test(val) || /^u\d+$/i.test(val)) {
+        setHint(hint, input, 'This looks like a VNDB user ID. Use the <a onclick="switchToUsernameTab()">Username tab</a> for user-based generation.', 'warn');
+        return false;
+    }
+    if (/anilist\.co\/user\//i.test(val)) {
+        setHint(hint, input, 'This looks like a user profile URL. Use the <a onclick="switchToUsernameTab()">Username tab</a> for user-based generation.', 'warn');
+        return false;
+    }
+
+    // Auto-detect source from a pasted VNDB URL — switch source dropdown automatically
+    if (VNDB_VN_URL_RE.test(val)) {
+        if (sourceSelect.value !== 'vndb') {
+            sourceSelect.value = 'vndb';
+            onEntrySourceChange(sourceSelect);
+        }
+        clearHint(hint, input);
+        return true;
+    }
+
+    // Auto-detect source from a pasted AniList URL — switch source and media type automatically
+    if (ANILIST_MEDIA_URL_RE.test(val)) {
+        if (sourceSelect.value !== 'anilist') {
+            sourceSelect.value = 'anilist';
+            onEntrySourceChange(sourceSelect);
+        }
+        const match = val.match(/anilist\.co\/(anime|manga)\/\d+/i);
+        if (match) {
+            const mediaTypeSelect = row.querySelector('[data-field="media_type"]');
+            if (mediaTypeSelect) {
+                mediaTypeSelect.value = match[1].toUpperCase() === 'ANIME' ? 'ANIME' : 'MANGA';
+            }
+        }
+        clearHint(hint, input);
+        return true;
+    }
+
+    // Source-specific validation for plain IDs
+    const source = sourceSelect.value;
+
     if (source === 'vndb') {
-        // Accept: v17, V17, 17, vndb.org/v17 URLs
-        if (VNDB_VN_URL_RE.test(val) || VNDB_VN_ID_RE.test(val) || /^\d+$/.test(val)) {
+        if (VNDB_VN_ID_RE.test(val) || /^\d+$/.test(val)) {
             clearHint(hint, input);
             return true;
-        }
-        // Detect user URL pasted into media ID field
-        if (/vndb\.org\/u\d+/i.test(val) || /^u\d+$/i.test(val)) {
-            setHint(hint, input, 'This looks like a VNDB user ID. Use the <a onclick="switchToUsernameTab()">Username tab</a> for user-based generation.', 'warn');
-            return false;
-        }
-        // Detect AniList URL in VNDB field
-        if (/anilist\.co\//i.test(val)) {
-            setHint(hint, input, 'This is an AniList URL. Switch the source to AniList, or paste the VNDB ID.', 'warn');
-            return false;
         }
         setHint(hint, input, 'Expected a VNDB VN ID like <b>v17</b>, <b>17</b>, or a vndb.org URL.', 'error');
         return false;
     }
 
     if (source === 'anilist') {
-        // Accept: 9253, anilist.co/anime/9253 URLs
-        if (/^\d+$/.test(val) || ANILIST_MEDIA_URL_RE.test(val)) {
+        if (/^\d+$/.test(val)) {
             clearHint(hint, input);
             return true;
-        }
-        // Detect AniList user URL pasted into media ID field
-        if (/anilist\.co\/user\//i.test(val)) {
-            setHint(hint, input, 'This looks like a user profile URL. Use the <a onclick="switchToUsernameTab()">Username tab</a> for user-based generation.', 'warn');
-            return false;
-        }
-        // Detect VNDB URL in AniList field
-        if (/vndb\.org\//i.test(val)) {
-            setHint(hint, input, 'This is a VNDB URL. Switch the source to VNDB, or paste the AniList ID.', 'warn');
-            return false;
         }
         setHint(hint, input, 'Expected a numeric AniList ID like <b>9253</b> or an anilist.co URL.', 'error');
         return false;
@@ -622,6 +657,7 @@ function validateManualId(input) {
 
 // Initialize the preview card toggles and first manual entry row on load
 document.addEventListener('DOMContentLoaded', () => {
+    loadSettings();
     updatePreviewCard();
     addManualEntry();
 });
