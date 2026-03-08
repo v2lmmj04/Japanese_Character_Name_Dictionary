@@ -265,7 +265,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
   padding: 12px 14px;
   border-radius: var(--radius);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, border-color 0.15s;
   margin-bottom: 4px;
   border: 1px solid transparent;
 }
@@ -273,6 +273,15 @@ button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 .history-item:hover {
   background: var(--surface2);
   border-color: var(--border);
+}
+
+.history-item.active {
+  background: #fff0f6;
+  border-color: var(--accent-light);
+}
+
+.history-item.active .history-item-name {
+  color: var(--accent);
 }
 
 .history-item-name {

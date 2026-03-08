@@ -11,7 +11,8 @@ const STORE_NAME   = "dictionaries";
 
 // ── IndexedDB ──────────────────────────────────────────────────────────────
 
-let db = null;
+let db              = null;
+let currentLoadedId = null;
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -275,6 +276,14 @@ async function renderHistory() {
   list.querySelectorAll(".btn-hist-del").forEach(btn =>
     btn.addEventListener("click", e => { e.stopPropagation(); histDelete(btn.dataset.id); })
   );
+
+  updateActiveHistoryItem();
+}
+
+function updateActiveHistoryItem() {
+  document.querySelectorAll(".history-item").forEach(item => {
+    item.classList.toggle("active", item.dataset.id === currentLoadedId);
+  });
 }
 
 function escHtml(str) {
@@ -284,9 +293,11 @@ function escHtml(str) {
 async function histLoad(id) {
   const record = await getDict(id);
   if (!record) return;
+  currentLoadedId = id;
   document.getElementById("dict-name").value  = record.dict_name;
   document.getElementById("entry-area").value = record.raw_text;
   updateEntryCount();
+  updateActiveHistoryItem();
   setStatus(`Loaded "${record.dict_name}" for editing.`, "success");
   document.getElementById("entry-area").focus();
 }
