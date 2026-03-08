@@ -71,7 +71,7 @@ function incrementHitCount(id) {
       record.hit_count = (record.hit_count || 0) + 1;
       const put = store.put(record);
       put.onsuccess = () => resolve();
-      put.onerror   = err => reject(err);
+      put.onerror   = err => reject(err.target ? err.target.error : err);
     };
     req.onerror = e => reject(e.target.error);
   });
