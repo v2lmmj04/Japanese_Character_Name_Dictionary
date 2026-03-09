@@ -94,7 +94,7 @@ function parseEntries(rawText) {
 
     const term       = line.slice(0, firstComma).trim();
     const reading    = line.slice(firstComma + 1, secondComma).trim();
-    const definition = line.slice(secondComma + 1).trim();
+    const definition = line.slice(secondComma + 1).trim().replace(/\\n/g, "\n");
     if (!term) continue;
     entries.push({ term, reading, definition });
   }
@@ -121,9 +121,21 @@ async function buildZip(dictName, entries) {
   for (let i = 0; i < entries.length; i += TERM_LIMIT) {
     const chunk     = entries.slice(i, i + TERM_LIMIT);
     const bankIndex = Math.floor(i / TERM_LIMIT) + 1;
-    const bank      = chunk.map(({ term, reading, definition }) =>
-      [term, reading, TAG_NAME, "", 0, [definition], 0, ""]
-    );
+    const bank      = chunk.map(({ term, reading, definition }) => {
+      let defEntry;
+      if (definition.includes("\n")) {
+        const parts   = definition.split("\n");
+        const content = [];
+        parts.forEach((part, i) => {
+          if (i > 0) content.push({ tag: "br" });
+          content.push(part);
+        });
+        defEntry = [{ type: "structured-content", content }];
+      } else {
+        defEntry = [definition];
+      }
+      return [term, reading, TAG_NAME, "", 0, defEntry, 0, ""];
+    });
     zip.file(`term_bank_${bankIndex}.json`, JSON.stringify(bank));
   }
 
@@ -177,7 +189,19 @@ async function parseZip(file) {
       const term       = entry[0] ?? "";
       const reading    = entry[1] ?? "";
       const defs       = entry[5];
-      const definition = Array.isArray(defs) ? defs.join(" / ") : (defs ?? "");
+      const definition = Array.isArray(defs)
+        ? defs.map(d => {
+            if (typeof d === "string") return d;
+            if (d && d.type === "structured-content" && Array.isArray(d.content)) {
+              return d.content.map(p => {
+                if (typeof p === "string") return p;
+                if (p && p.tag === "br") return "\\n";
+                return "";
+              }).join("");
+            }
+            return String(d ?? "");
+          }).join(" / ")
+        : (defs ?? "");
       lines.push(`${term}, ${reading}, ${definition}`);
     }
   }
