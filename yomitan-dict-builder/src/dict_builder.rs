@@ -296,9 +296,9 @@ impl DictBuilder {
 
         // Aliases: union (deduplicated)
         if !other.aliases.is_empty() {
-            let existing: HashSet<String> = base.aliases.iter().cloned().collect();
+            let mut existing: HashSet<String> = base.aliases.iter().cloned().collect();
             for alias in &other.aliases {
-                if !alias.is_empty() && !existing.contains(alias) {
+                if !alias.is_empty() && existing.insert(alias.clone()) {
                     base.aliases.push(alias.clone());
                 }
             }
@@ -306,9 +306,9 @@ impl DictBuilder {
 
         // Spoiler aliases: union (deduplicated)
         if !other.spoiler_aliases.is_empty() {
-            let existing: HashSet<String> = base.spoiler_aliases.iter().cloned().collect();
+            let mut existing: HashSet<String> = base.spoiler_aliases.iter().cloned().collect();
             for alias in &other.spoiler_aliases {
-                if !alias.is_empty() && !existing.contains(alias) {
+                if !alias.is_empty() && existing.insert(alias.clone()) {
                     base.spoiler_aliases.push(alias.clone());
                 }
             }
@@ -686,13 +686,13 @@ impl DictBuilder {
 
         // --- Alias entries ---
         // Include spoiler aliases when the user has enabled spoilers
-        let all_aliases: Box<dyn Iterator<Item = &String>> = if self.settings.show_spoilers {
-            Box::new(char.aliases.iter().chain(char.spoiler_aliases.iter()))
+        let spoiler_aliases: &[String] = if self.settings.show_spoilers {
+            &char.spoiler_aliases
         } else {
-            Box::new(char.aliases.iter())
+            &[]
         };
 
-        for alias in all_aliases {
+        for alias in char.aliases.iter().chain(spoiler_aliases.iter()) {
             if alias.is_empty() {
                 continue;
             }
