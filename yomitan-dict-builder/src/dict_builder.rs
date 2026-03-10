@@ -11,6 +11,35 @@ use crate::kana;
 use crate::models::*;
 use crate::name_parser::{self, HONORIFIC_SUFFIXES};
 
+/// Parse AniList alternative name format "Romanized (Japanese)".
+///
+/// AniList alternative names often use the format "Romaji (日本語)" where
+/// the romanized reading is outside the parentheses and the Japanese form
+/// is inside. This function extracts both parts.
+///
+/// Returns `(term, optional_reading)`:
+/// - For "Aoki Umi (碧井海)": returns ("碧井海", Some("あおきうみ"))
+/// - For "碧井海": returns ("碧井海", None) — standalone Japanese
+/// - For "Ruri's Mother": returns ("Ruri's Mother", None) — no parenthesized part
+fn parse_alt_name_format(alias: &str) -> (String, Option<String>) {
+    // Look for pattern: "text (text)" where the parenthesized part contains Japanese
+    if let Some(open) = alias.rfind('(') {
+        if let Some(close) = alias[open..].find(')') {
+            let inside = alias[open + 1..open + close].trim();
+            let outside = alias[..open].trim();
+
+            if kana::contains_japanese(inside) && !outside.is_empty() {
+                // The Japanese part is the term, the romanized part provides the reading
+                let reading = kana::alphabet_to_kana(outside).replace(' ', "");
+                return (inside.to_string(), Some(reading));
+            }
+        }
+    }
+
+    // No "X (Y)" format or not Japanese inside — return as-is
+    (alias.to_string(), None)
+}
+
 /// Maximum number of entries to put into one term bank file.
 /// Yomitan recommends keeping each term bank small to reduce import issues.
 /// JMdict and Jitendex both use 2k entries as their limit.
@@ -647,10 +676,24 @@ impl DictBuilder {
 
         // --- Alias entries ---
         for alias in &char.aliases {
-            if !alias.is_empty() && added_terms.insert(alias.clone()) {
+            if alias.is_empty() {
+                continue;
+            }
+
+            // Parse "Romanized (Japanese)" format used by AniList alternative names.
+            // E.g. "Aoki Umi (碧井海)" → term="碧井海", reading from "Aoki Umi"
+            let (alias_term, alias_reading) = parse_alt_name_format(alias);
+
+            // Skip aliases that don't contain any Japanese characters
+            if !kana::contains_japanese(&alias_term) {
+                continue;
+            }
+
+            if added_terms.insert(alias_term.clone()) {
+                let reading = alias_reading.unwrap_or_else(|| readings.full.clone());
                 self.entries.push(ContentBuilder::create_term_entry(
-                    alias,
-                    &readings.full, // Use full reading for aliases
+                    &alias_term,
+                    &reading,
                     tag_role,
                     score,
                     &structured_content,
@@ -658,7 +701,7 @@ impl DictBuilder {
 
                 // Also collect alias name+reading for deferred honorific generation
                 if self.settings.honorifics {
-                    base_names_with_readings.push((alias.clone(), readings.full.clone()));
+                    base_names_with_readings.push((alias_term, reading));
                 }
             }
         }
@@ -945,7 +988,7 @@ mod tests {
             blood_type: Some("A".to_string()),
             birthday: Some(vec![1, 1]),
             description: Some("Test description".to_string()),
-            aliases: vec!["TestAlias".to_string()],
+            aliases: vec!["テストエイリアス".to_string()],
             personality: vec![CharacterTrait {
                 name: "Kind".to_string(),
                 spoiler: 0,
@@ -1095,7 +1138,7 @@ mod tests {
             .collect();
 
         assert!(
-            terms.contains(&"TestAlias".to_string()),
+            terms.contains(&"テストエイリアス".to_string()),
             "Should have alias entry"
         );
     }
@@ -2236,7 +2279,7 @@ mod tests {
         char.aliases = vec![
             "".to_string(),
             "".to_string(),
-            "Valid".to_string(),
+            "有効".to_string(),
             "".to_string(),
         ];
         builder.add_character(&char, "Test");
@@ -2248,8 +2291,8 @@ mod tests {
             .collect();
 
         assert!(
-            terms.contains(&"Valid".to_string()),
-            "Non-empty alias should be present"
+            terms.contains(&"有効".to_string()),
+            "Non-empty Japanese alias should be present"
         );
         // Empty aliases should not produce entries
         let empty_count = terms.iter().filter(|t| t.is_empty()).count();
@@ -2802,7 +2845,7 @@ mod tests {
     fn test_character_with_aliases_generates_alias_entries() {
         let mut builder = DictBuilder::new(s_no_hon(), None, "Test".to_string());
         let mut ch = make_test_character("c1", "Test Name", "テスト", "main");
-        ch.aliases = vec!["Alias1".to_string(), "エイリアス".to_string()];
+        ch.aliases = vec!["別名".to_string(), "エイリアス".to_string()];
         builder.add_character(&ch, "Test");
 
         let terms: Vec<String> = builder
@@ -2811,7 +2854,7 @@ mod tests {
             .filter_map(|e| e[0].as_str().map(|s| s.to_string()))
             .collect();
 
-        assert!(terms.contains(&"Alias1".to_string()));
+        assert!(terms.contains(&"別名".to_string()));
         assert!(terms.contains(&"エイリアス".to_string()));
     }
 
@@ -3710,25 +3753,25 @@ mod tests {
         let mut builder = DictBuilder::new(s_no_hon(), None, "Test".to_string());
         let mut char1 = make_test_character("c1", "Name", "テスト", "main");
         char1.source = "anilist".to_string();
-        char1.aliases = vec!["Alias1".to_string()];
+        char1.aliases = vec!["別名一".to_string()];
 
         let mut char2 = make_test_character("c1", "Name", "テスト", "side");
         char2.source = "anilist".to_string();
-        char2.aliases = vec!["Alias2".to_string(), "Alias1".to_string()]; // Alias1 is duplicate
+        char2.aliases = vec!["別名二".to_string(), "別名一".to_string()]; // 別名一 is duplicate
 
         builder.add_character(&char1, "Game A");
         builder.add_character(&char2, "Game B");
 
         let entries = builder.base_entries();
         let terms: Vec<&str> = entries.iter().filter_map(|e| e[0].as_str()).collect();
-        assert!(terms.contains(&"Alias1"), "Should have Alias1");
+        assert!(terms.contains(&"別名一"), "Should have 別名一");
         assert!(
-            terms.contains(&"Alias2"),
-            "Should have Alias2 from second character"
+            terms.contains(&"別名二"),
+            "Should have 別名二 from second character"
         );
-        // Alias1 should appear only once as a term
-        let alias1_count = terms.iter().filter(|&&t| t == "Alias1").count();
-        assert_eq!(alias1_count, 1, "Alias1 should not be duplicated");
+        // 別名一 should appear only once as a term
+        let alias1_count = terms.iter().filter(|&&t| t == "別名一").count();
+        assert_eq!(alias1_count, 1, "別名一 should not be duplicated");
     }
 
     #[test]
@@ -3790,5 +3833,109 @@ mod tests {
             content_str.contains("From: Only Game"),
             "Should have single media title"
         );
+    }
+
+    // === parse_alt_name_format tests ===
+
+    #[test]
+    fn test_parse_alt_name_romanized_japanese_format() {
+        // Standard "Romanized (Japanese)" format
+        let (term, reading) = parse_alt_name_format("Aoki Umi (碧井海)");
+        assert_eq!(term, "碧井海");
+        assert!(reading.is_some());
+        assert_eq!(reading.unwrap(), "あおきうみ");
+    }
+
+    #[test]
+    fn test_parse_alt_name_standalone_japanese() {
+        // Standalone Japanese alias — no parentheses
+        let (term, reading) = parse_alt_name_format("碧井海");
+        assert_eq!(term, "碧井海");
+        assert!(reading.is_none());
+    }
+
+    #[test]
+    fn test_parse_alt_name_standalone_english() {
+        // English alias — returned as-is (filtered downstream by contains_japanese)
+        let (term, reading) = parse_alt_name_format("Ruri's Mother");
+        assert_eq!(term, "Ruri's Mother");
+        assert!(reading.is_none());
+    }
+
+    #[test]
+    fn test_parse_alt_name_katakana_in_parens() {
+        let (term, reading) = parse_alt_name_format("Elaina (エレイナ)");
+        assert_eq!(term, "エレイナ");
+        assert!(reading.is_some());
+        // "Elaina" → e=え, la=ら, i=い, na=な → "えらいな"
+        assert_eq!(reading.unwrap(), "えらいな");
+    }
+
+    #[test]
+    fn test_parse_alt_name_empty_outside() {
+        // Edge case: nothing outside parens — return as-is
+        let (term, reading) = parse_alt_name_format("(碧井海)");
+        assert_eq!(term, "(碧井海)");
+        assert!(reading.is_none());
+    }
+
+    // === Non-Japanese alias filtering ===
+
+    #[test]
+    fn test_english_alias_filtered_out() {
+        let mut builder = DictBuilder::new(s_no_hon(), None, "Test".to_string());
+        let mut ch = make_test_character("c1", "Test Name", "テスト", "main");
+        ch.aliases = vec!["Ruri's Mother".to_string(), "エイリアス".to_string()];
+        builder.add_character(&ch, "Test");
+
+        let terms: Vec<String> = builder
+            .base_entries()
+            .iter()
+            .filter_map(|e| e[0].as_str().map(|s| s.to_string()))
+            .collect();
+
+        assert!(
+            !terms.contains(&"Ruri's Mother".to_string()),
+            "English alias should be filtered out"
+        );
+        assert!(
+            terms.contains(&"エイリアス".to_string()),
+            "Japanese alias should be present"
+        );
+    }
+
+    // === "Romanized (Japanese)" alias integration ===
+
+    #[test]
+    fn test_alias_romanized_japanese_format_creates_correct_entry() {
+        let mut builder = DictBuilder::new(s_no_hon(), None, "Test".to_string());
+        let mut ch = make_test_character("c1", "Test Name", "テスト", "main");
+        ch.aliases = vec!["Aoki Umi (碧井海)".to_string()];
+        builder.add_character(&ch, "Test");
+
+        let terms: Vec<String> = builder
+            .base_entries()
+            .iter()
+            .filter_map(|e| e[0].as_str().map(|s| s.to_string()))
+            .collect();
+
+        // The Japanese part should be the term, not the full "Aoki Umi (碧井海)"
+        assert!(
+            terms.contains(&"碧井海".to_string()),
+            "Should extract Japanese part as term"
+        );
+        assert!(
+            !terms.contains(&"Aoki Umi (碧井海)".to_string()),
+            "Full format string should not be a term"
+        );
+
+        // Check that the reading is derived from the romanized part
+        let entry = builder
+            .base_entries()
+            .iter()
+            .find(|e| e[0].as_str() == Some("碧井海"))
+            .unwrap()
+            .clone();
+        assert_eq!(entry[1].as_str().unwrap(), "あおきうみ");
     }
 }
